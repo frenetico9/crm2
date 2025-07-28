@@ -2,11 +2,13 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Lead, Property } from './types';
 
-if (!process.env.API_KEY) {
-  console.error("API_KEY environment variable not set.");
+const API_KEY = "AIzaSyDvl2fmUZ-H10AJ0BmLGRVfX98tOW8PDdY";
+
+if (!API_KEY) {
+  console.error("API key not provided. AI features will be disabled.");
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 const propertySuggestionSchema = {
     type: Type.OBJECT,
@@ -24,6 +26,11 @@ const propertySuggestionSchema = {
 
 
 export const getPropertySuggestions = async (lead: Lead, properties: Property[]): Promise<string[]> => {
+    if (!API_KEY) {
+        console.error("Cannot get property suggestions because API key is missing.");
+        return [];
+    }
+    
     try {
         const relevantProperties = properties.filter(p => p.status === 'Disponível');
 
