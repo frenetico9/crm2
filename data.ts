@@ -1,5 +1,5 @@
 
-import { Agent, Property, Lead, LeadStatus, PropertyStatus, PropertyType, Interaction, Visit } from './types';
+import { Agent, Property, Lead, LeadStatus, PropertyStatus, PropertyType, Interaction, Visit, ChatMessage } from './types';
 import { addDays } from 'date-fns';
 
 const _startOfWeek = (date: Date, options?: { weekStartsOn?: number }): Date => {
@@ -25,9 +25,9 @@ const _setMinutes = (date: Date | number, value: number): Date => {
 };
 
 export const agents: Agent[] = [
-  { id: 'agent-1', name: 'Carlos Ferreira', avatarUrl: 'https://i.pravatar.cc/150?u=agent-1' },
-  { id: 'agent-2', name: 'Ana Souza', avatarUrl: 'https://i.pravatar.cc/150?u=agent-2' },
-  { id: 'agent-3', name: 'Ricardo Lima', avatarUrl: 'https://i.pravatar.cc/150?u=agent-3' },
+  { id: 'agent-1', name: 'Carlos Ferreira', email: 'carlos@corretor.ai', password: 'password123', avatarUrl: 'https://i.pravatar.cc/150?u=agent-1', phone: '(11) 99999-1111' },
+  { id: 'agent-2', name: 'Ana Souza', email: 'ana@corretor.ai', password: 'password123', avatarUrl: 'https://i.pravatar.cc/150?u=agent-2', phone: '(11) 99999-2222' },
+  { id: 'agent-3', name: 'Ricardo Lima', email: 'ricardo@corretor.ai', password: 'password123', avatarUrl: 'https://i.pravatar.cc/150?u=agent-3', phone: '(11) 99999-3333' },
 ];
 
 export const properties: Property[] = [
@@ -241,4 +241,11 @@ export const visits: Visit[] = [
         leadId: 'lead-4',
         propertyId: 'prop-4'
     },
+];
+
+export const chatMessages: ChatMessage[] = [
+    { id: 'msg-1', leadId: 'lead-1', content: 'Olá Mariana, tudo bem? Vi seu interesse em apartamentos no Centro. Tenho algumas opções ótimas para te mostrar!', timestamp: '2024-07-29T10:00:00Z', sender: 'agent', status: 'read' },
+    { id: 'msg-2', leadId: 'lead-1', content: 'Olá! Tudo bem sim. Que legal! Tenho interesse sim, pode me mandar.', timestamp: '2024-07-29T10:01:00Z', sender: 'lead', status: 'read' },
+    { id: 'msg-3', leadId: 'lead-1', content: 'Claro! O que acha deste? (Ref: prop-1)', timestamp: '2024-07-29T10:02:00Z', sender: 'agent', status: 'read' },
+    { id: 'msg-4', leadId: 'lead-2', content: 'João, boa tarde. Alguma novidade sobre a proposta da casa nos Jardins?', timestamp: '2024-07-29T14:30:00Z', sender: 'agent', status: 'delivered' },
 ];

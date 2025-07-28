@@ -22,7 +22,10 @@ export enum PropertyType {
 export interface Agent {
   id: string;
   name: string;
+  email: string;
+  password?: string;
   avatarUrl: string;
+  phone?: string;
 }
 
 export interface Property {
@@ -74,4 +77,13 @@ export interface Visit {
   agentId: string;
   leadId: string;
   propertyId: string;
+}
+
+export interface ChatMessage {
+    id: string;
+    leadId: string;
+    content: string;
+    timestamp: string;
+    sender: 'agent' | 'lead';
+    status: 'sent' | 'delivered' | 'read';
 }
