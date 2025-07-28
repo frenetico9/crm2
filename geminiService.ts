@@ -1,8 +1,7 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Lead, Property } from './types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: "AIzaSyDvl2fmUZ-H10AJ0BmLGRVfX98tOW8PDdY" });
 
 const propertySuggestionSchema = {
     type: Type.OBJECT,
