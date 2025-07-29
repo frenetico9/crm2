@@ -1,7 +1,8 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Lead, Property } from './types';
 
-// Assume process.env.API_KEY is available in the environment.
+// Atendendo à solicitação, a chave da API é mantida no frontend.
 const ai = new GoogleGenAI({ apiKey: "AIzaSyDvl2fmUZ-H10AJ0BmLGRVfX98tOW8PDdY" });
 
 const propertySuggestionSchema = {
@@ -57,6 +58,7 @@ export const getPropertySuggestions = async (lead: Lead, properties: Property[])
 
     } catch (error) {
         console.error("Error calling Gemini API:", error);
+        // Retornar um array vazio em caso de erro para não quebrar a UI
         return [];
     }
 };
