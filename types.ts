@@ -78,12 +78,3 @@ export interface Visit {
   leadId: string;
   propertyId: string;
 }
-
-export interface ChatMessage {
-    id: string;
-    leadId: string;
-    content: string;
-    timestamp: string;
-    sender: 'agent' | 'lead';
-    status: 'sent' | 'delivered' | 'read';
-}

@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useMemo, useEffect, useCallback, createContext, useContext, useRef } from 'react';
 import { Routes, Route, Link, useParams, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
@@ -13,8 +14,8 @@ import {
     isSameDay
 } from 'date-fns';
 import { ptBR } from 'https://esm.sh/date-fns@^3.6.0/locale/pt-BR';
-import { agents as mockAgents, properties as mockProperties, leads as mockLeads, interactions as mockInteractions, visits as mockVisits, chatMessages as mockChatMessages } from './data';
-import type { Lead, Property, Agent, Interaction, Visit, ChatMessage } from './types';
+import { agents as mockAgents, properties as mockProperties, leads as mockLeads, interactions as mockInteractions, visits as mockVisits } from './data';
+import type { Lead, Property, Agent, Interaction, Visit } from './types';
 import { LeadStatus, PropertyStatus, PropertyType } from './types';
 import { getPropertySuggestions } from './geminiService';
 
@@ -40,11 +41,6 @@ const XIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="
 const MailIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>);
 const PhoneIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>);
 const LogOutIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> );
-const SendIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>);
-const CheckIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>);
-const CheckCheckIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>);
-const MoreVerticalIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>);
-const ComputerIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="10" rx="2"></rect><line x1="12" y1="18" x2="12" y2="22"></line><line x1="5" y1="18" x2="19" y2="18"></line></svg>);
 
 // AUTHENTICATION
 interface AuthContextType {
@@ -843,236 +839,16 @@ const PropertiesListPage = () => {
     );
 };
 
-const WhatsAppConnectionScreen: React.FC<{onConnect: () => void, isConnecting: boolean}> = ({ onConnect, isConnecting }) => (
-    <div className="flex-grow flex items-center justify-center bg-gray-50 h-full">
-        <div className="text-center p-8 max-w-lg mx-auto">
-            <ComputerIcon className="mx-auto h-24 w-24 text-gray-400 mb-6" />
-            <h2 className="text-3xl font-light text-gray-700 mb-4">Use o WhatsApp no seu computador</h2>
-
-            {!isConnecting ? (
-                 <>
-                    <p className="text-gray-500 mb-8">Conecte-se para enviar e receber mensagens sem precisar manter o celular conectado à internet.</p>
-                    <button onClick={onConnect} className="bg-green-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-600 transition-colors">
-                        Conectar ao WhatsApp
-                    </button>
-                </>
-            ) : (
-                <div className="space-y-6">
-                    <h3 className="text-xl font-semibold text-gray-700">Para conectar, siga estes passos:</h3>
-                    <ol className="text-left text-gray-600 space-y-3 list-decimal list-inside mx-auto max-w-sm">
-                        <li>Abra o WhatsApp no seu celular</li>
-                        <li>Toque em **Menu** (&#8942;) ou **Configurações** e selecione **Aparelhos conectados**</li>
-                        <li>Toque em **Conectar um aparelho**</li>
-                        <li>Aponte seu celular para esta tela para capturar o QR code</li>
-                    </ol>
-                    <div className="p-4 bg-white rounded-lg inline-block shadow-md">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg" alt="QR Code" className="w-48 h-48"/>
-                    </div>
-                    <div className="flex items-center justify-center gap-2 text-gray-500">
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-500"></div>
-                        Aguardando escaneamento...
-                    </div>
-                </div>
-            )}
-            <p className="text-xs text-gray-400 mt-10">A integração com WhatsApp requer um backend. Esta é uma simulação da interface.</p>
-        </div>
-    </div>
-);
-
-const WhatsAppChatInterface: React.FC<{onDisconnect: () => void}> = ({onDisconnect}) => {
-    const { currentUser } = useAuth();
-    const [selectedLeadId, setSelectedLeadId] = useState(mockLeads[0]?.id);
-    const [messages, setMessages] = useState<ChatMessage[]>(mockChatMessages);
-    const [newMessage, setNewMessage] = useState('');
-    const chatBoxRef = useRef<HTMLDivElement>(null);
-    const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const menuRef = useRef<HTMLDivElement>(null);
-
-    const selectedLead = mockLeads.find(l => l.id === selectedLeadId);
-    
-    const chatHistory = useMemo(() => {
-        return messages
-            .filter(m => m.leadId === selectedLeadId)
-            .sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    }, [messages, selectedLeadId]);
-
-    useEffect(() => {
-        if (chatBoxRef.current) {
-            chatBoxRef.current.scrollTop = chatBoxRef.current.scrollHeight;
-        }
-    }, [chatHistory]);
-
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-                setIsMenuOpen(false);
-            }
-        };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
-
-    const handleSendMessage = (e: React.FormEvent) => {
-        e.preventDefault();
-        if(!newMessage.trim() || !selectedLeadId) return;
-
-        const message: ChatMessage = {
-            id: `msg-${Date.now()}`,
-            leadId: selectedLeadId,
-            content: newMessage,
-            sender: 'agent',
-            timestamp: new Date().toISOString(),
-            status: 'sent'
-        };
-        setMessages(prev => [...prev, message]);
-        setNewMessage('');
-    };
-
-    const MessageStatus: React.FC<{status: ChatMessage['status']}> = ({status}) => {
-        if (status === 'read') return <CheckCheckIcon className="text-blue-500" />;
-        if (status === 'delivered') return <CheckCheckIcon className="text-gray-400" />;
-        return <CheckIcon className="text-gray-400" />
-    }
-
-    return (
-        <div className="flex h-[calc(100vh-140px)] md:h-[calc(100vh-73px)] bg-white rounded-lg shadow-md overflow-hidden">
-                {/* Contact List */}
-                <aside className="w-full md:w-1/3 lg:w-1/4 border-r border-gray-200 bg-white flex flex-col">
-                    <header className="flex items-center justify-between p-3 bg-gray-100 border-b border-gray-200">
-                        {currentUser && <img src={currentUser.avatarUrl} alt={currentUser.name} className="h-10 w-10 rounded-full" />}
-                         <div className="relative" ref={menuRef}>
-                            <button onClick={() => setIsMenuOpen(p => !p)} className="p-2 text-gray-500 hover:text-gray-700">
-                                <MoreVerticalIcon className="h-5 w-5"/>
-                            </button>
-                            {isMenuOpen && (
-                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10">
-                                    <button onClick={onDisconnect} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Desconectar</button>
-                                </div>
-                            )}
-                        </div>
-                    </header>
-                    <div className="p-2 border-b bg-gray-50">
-                         <div className="relative">
-                             <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                            <input type="text" placeholder="Buscar ou começar uma nova conversa" className="w-full pl-10 pr-3 py-1.5 text-sm border rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-brand-primary" />
-                         </div>
-                    </div>
-                    <ul className="overflow-y-auto flex-grow">
-                        {mockLeads.map(lead => (
-                            <li key={lead.id} onClick={() => setSelectedLeadId(lead.id)}
-                                className={`flex items-center gap-3 p-3 cursor-pointer border-l-4 transition-colors ${selectedLeadId === lead.id ? 'bg-gray-100 border-brand-primary' : 'border-transparent hover:bg-gray-50'}`}
-                            >
-                                <img src={`https://i.pravatar.cc/150?u=${lead.email}`} alt={lead.name} className="h-12 w-12 rounded-full" />
-                                <div className="flex-grow overflow-hidden border-t border-gray-100 pt-3">
-                                    <p className="font-semibold text-brand-text truncate">{lead.name}</p>
-                                    <p className="text-sm text-brand-text-light truncate">{
-                                        messages.filter(m => m.leadId === lead.id).slice(-1)[0]?.content || "Nenhuma mensagem ainda"
-                                    }</p>
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                </aside>
-                {/* Chat Area */}
-                <main className="w-full md:w-2/3 lg:w-3/4 flex flex-col bg-[#E5DDD5]">
-                    {selectedLead ? (
-                        <>
-                        {/* Chat Header */}
-                        <header className="flex items-center gap-4 p-3 border-b border-gray-200 bg-gray-100">
-                            <img src={`https://i.pravatar.cc/150?u=${selectedLead.email}`} alt={selectedLead.name} className="h-10 w-10 rounded-full" />
-                            <div>
-                                <p className="font-bold text-brand-text">{selectedLead.name}</p>
-                            </div>
-                        </header>
-                        {/* Messages */}
-                        <div ref={chatBoxRef} className="flex-grow p-4 overflow-y-auto bg-repeat" style={{backgroundImage: "url('https://i.pinimg.com/736x/8c/98/99/8c98994518b575bfd8c949e91d20548b.jpg')"}}>
-                            <div className="space-y-2">
-                                {chatHistory.map(msg => (
-                                    <div key={msg.id} className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'}`}>
-                                        <div className={`max-w-xs lg:max-w-md p-2 px-3 rounded-lg shadow-sm ${msg.sender === 'agent' ? 'bg-[#DCF8C6]' : 'bg-white'}`}>
-                                            <p className="text-brand-text text-sm" style={{whiteSpace: 'pre-wrap'}}>{msg.content}</p>
-                                            <div className="flex justify-end items-center gap-1 mt-1">
-                                                <p className="text-xs text-gray-400">{format(new Date(msg.timestamp), 'HH:mm')}</p>
-                                                {msg.sender === 'agent' && <MessageStatus status={msg.status} />}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                        {/* Input Form */}
-                        <footer className="p-3 bg-gray-100 border-t border-gray-200">
-                             <form onSubmit={handleSendMessage} className="flex items-center gap-3">
-                                <input type="text" placeholder="Digite uma mensagem" value={newMessage} onChange={e => setNewMessage(e.target.value)}
-                                    className="flex-grow px-4 py-2 border bg-white rounded-full focus:outline-none focus:ring-1 focus:ring-brand-primary" />
-                                <button type="submit" className="bg-brand-primary text-white rounded-full p-3 hover:bg-opacity-90 transition-colors flex-shrink-0">
-                                    <SendIcon className="h-5 w-5"/>
-                                </button>
-                             </form>
-                        </footer>
-                        </>
-                    ) : (
-                        <div className="flex flex-col justify-center items-center h-full text-brand-text-light text-center">
-                            <MessageCircleIcon className="h-24 w-24 mb-4 text-gray-300"/>
-                            <h2 className="text-xl font-semibold text-gray-600">Selecione uma conversa</h2>
-                            <p className="text-gray-500">Escolha um lead na lista ao lado para começar a conversar.</p>
-                        </div>
-                    )}
-                </main>
-        </div>
-    );
-}
-
 const WhatsappPage = () => {
-    const [isWhatsAppConnected, setIsWhatsAppConnected] = useState(() => {
-        try {
-            return localStorage.getItem('isWhatsAppConnected') === 'true';
-        } catch {
-            return false;
-        }
-    });
-    const [isConnecting, setIsConnecting] = useState(false);
-    const timeoutRef = useRef<number | null>(null);
-    
-    useEffect(() => {
-        try {
-            localStorage.setItem('isWhatsAppConnected', String(isWhatsAppConnected));
-        } catch (error) {
-            console.error("Failed to write to localStorage:", error);
-        }
-        
-        // Cleanup timeout on component unmount
-        return () => {
-            if(timeoutRef.current) {
-                clearTimeout(timeoutRef.current);
-            }
-        }
-    }, [isWhatsAppConnected]);
-    
-    const handleConnect = () => {
-        setIsConnecting(true);
-        // Simulate scanning QR code
-        timeoutRef.current = window.setTimeout(() => {
-            setIsConnecting(false);
-            setIsWhatsAppConnected(true);
-        }, 4000); 
-    };
-    
-    const handleDisconnect = () => {
-        setIsWhatsAppConnected(false);
-        setIsConnecting(false);
-        if(timeoutRef.current) {
-            clearTimeout(timeoutRef.current);
-        }
-    }
-    
     return (
         <PageContainer title="WhatsApp" noPadding>
             <div className="h-[calc(100vh-140px)] md:h-[calc(100vh-125px)] flex flex-col">
-                {!isWhatsAppConnected 
-                    ? <WhatsAppConnectionScreen onConnect={handleConnect} isConnecting={isConnecting} />
-                    : <WhatsAppChatInterface onDisconnect={handleDisconnect} />
-                }
+                 <iframe
+                    src="https://web.whatsapp.com/"
+                    className="w-full h-full border-0"
+                    title="WhatsApp Web"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                ></iframe>
             </div>
         </PageContainer>
     );
