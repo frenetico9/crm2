@@ -1,7 +1,3 @@
-
-
-
-
 import React, { useState, useMemo, useEffect, useCallback, createContext, useContext, useRef } from 'react';
 import { Routes, Route, Link, useParams, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
@@ -161,7 +157,6 @@ const Header = () => {
         { path: '/leads', label: 'Leads', icon: UsersIcon },
         { path: '/properties', label: 'Imóveis', icon: BuildingIcon },
         { path: '/agenda', label: 'Agenda', icon: CalendarIcon },
-        { path: '/whatsapp', label: 'WhatsApp', icon: MessageCircleIcon },
     ];
 
     const NavLinkItem: React.FC<{ path: string, label: string, icon: React.FC<any> }> = ({ path, label, icon: Icon }) => (
@@ -717,6 +712,65 @@ const AISuggestions: React.FC<{ lead: Lead }> = ({ lead }) => {
         </div>
     );
 };
+
+const WhatsappComposer: React.FC<{ lead: Lead }> = ({ lead }) => {
+    const templates = useMemo(() => [
+        { name: "Saudação", text: `Olá, ${lead.name.split(' ')[0]}! Tudo bem? Vi que demonstrou interesse em nossos imóveis e gostaria de ajudar.` },
+        { name: "Follow-up", text: `Olá, ${lead.name.split(' ')[0]}. Passando para saber se conseguiu avaliar as opções de imóveis que enviei.` },
+        { name: "Agendar Visita", text: `Olá, ${lead.name.split(' ')[0]}. Qual seria o melhor dia e horário para agendarmos uma visita?` }
+    ], [lead.name]);
+
+    const [message, setMessage] = useState(templates[0].text);
+
+    useEffect(() => {
+        setMessage(templates[0].text);
+    }, [lead, templates]);
+
+    const handleTemplateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        setMessage(e.target.value);
+    };
+
+    const openWhatsApp = () => {
+        const phone = lead.phone.replace(/\D/g, '');
+        const fullPhone = phone.length > 11 ? phone : `55${phone}`;
+        const url = `https://wa.me/${fullPhone}?text=${encodeURIComponent(message)}`;
+        window.open(url, '_blank', 'noopener,noreferrer');
+    };
+
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-md">
+            <h3 className="text-lg font-bold text-brand-text mb-4 flex items-center gap-2">
+                <WhatsappIcon className="h-6 w-6 text-green-500"/>
+                Enviar WhatsApp
+            </h3>
+            <div className="space-y-4">
+                <div>
+                    <label htmlFor="template" className="block text-sm font-medium text-brand-text-light mb-1">Usar modelo</label>
+                    <select id="template" onChange={handleTemplateChange} className="w-full p-2 border border-gray-300 rounded-md focus:ring-brand-primary focus:border-brand-primary">
+                        {templates.map(t => <option key={t.name} value={t.text}>{t.name}</option>)}
+                    </select>
+                </div>
+                <div className="flex-grow flex flex-col">
+                    <label htmlFor="message" className="block text-sm font-medium text-brand-text-light mb-1">Mensagem</label>
+                    <textarea
+                        id="message"
+                        value={message}
+                        onChange={(e) => setMessage(e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded-md flex-grow focus:ring-brand-primary focus:border-brand-primary"
+                        rows={6}
+                    />
+                </div>
+                <div className="flex justify-end">
+                    <button onClick={openWhatsApp} className="bg-green-500 text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors">
+                        <WhatsappIcon className="h-5 w-5" />
+                        Enviar via WhatsApp
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const LeadDetailPage = () => {
     const { id } = useParams<{ id: string }>();
     const { agents } = useAuth();
@@ -786,6 +840,9 @@ const LeadDetailPage = () => {
                             ))}
                         </ul>
                     </div>
+
+                    {/* WhatsApp Composer */}
+                    <WhatsappComposer lead={lead} />
                 </div>
 
                 {/* Right Column: AI Suggestions */}
@@ -840,132 +897,6 @@ const PropertiesListPage = () => {
         </PageContainer>
     );
 };
-
-const WhatsappPage = () => {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-    const [message, setMessage] = useState('');
-
-    const filteredLeads = useMemo(() => {
-        return mockLeads.filter(lead =>
-            lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            lead.phone.includes(searchTerm)
-        );
-    }, [searchTerm]);
-
-    const templates = useMemo(() => [
-        { name: "Saudação", text: "Olá, {leadName}! Tudo bem? Vi que demonstrou interesse em nossos imóveis e gostaria de ajudar." },
-        { name: "Follow-up", text: "Olá, {leadName}. Passando para saber se conseguiu avaliar as opções de imóveis que enviei." },
-        { name: "Agendar Visita", text: "Olá, {leadName}. Qual seria o melhor dia e horário para agendarmos uma visita?" }
-    ], []);
-
-    const handleSelectLead = useCallback((lead: Lead) => {
-        setSelectedLead(lead);
-        setMessage(templates[0].text.replace('{leadName}', lead.name.split(' ')[0]));
-    }, [templates]);
-
-    const handleTemplateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        if (selectedLead) {
-            setMessage(e.target.value.replace('{leadName}', selectedLead.name.split(' ')[0]));
-        }
-    };
-
-    const openWhatsApp = (lead: Lead, text?: string) => {
-        const phone = lead.phone.replace(/\D/g, '');
-        // Assuming Brazilian numbers, add 55 if not present
-        const fullPhone = phone.length > 11 ? phone : `55${phone}`;
-        let url = `https://wa.me/${fullPhone}`;
-        if (text) {
-            url += `?text=${encodeURIComponent(text)}`;
-        }
-        window.open(url, '_blank', 'noopener,noreferrer');
-    };
-
-    const handleSend = () => {
-        if (selectedLead) {
-            openWhatsApp(selectedLead, message);
-        }
-    };
-
-    return (
-        <PageContainer title="Integração WhatsApp" noPadding>
-            <div className="p-4 sm:p-6 lg:p-8">
-                <div className="flex flex-col md:flex-row gap-6 h-[calc(100vh-230px)] md:h-[calc(100vh-190px)]">
-                    {/* Left: Lead List */}
-                    <div className="w-full md:w-1/3 bg-white p-4 rounded-lg shadow-md flex flex-col">
-                        <div className="relative mb-4">
-                            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                            <input
-                                type="text"
-                                placeholder="Buscar lead..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="pl-10 pr-4 py-2 w-full rounded-full border border-gray-300 focus:ring-2 focus:ring-brand-primary focus:outline-none"
-                            />
-                        </div>
-                        <div className="flex-grow overflow-y-auto pr-2">
-                            <ul className="space-y-2">
-                                {filteredLeads.map(lead => (
-                                    <li
-                                        key={lead.id}
-                                        onClick={() => handleSelectLead(lead)}
-                                        className={`p-3 rounded-lg cursor-pointer flex justify-between items-center transition-colors ${selectedLead?.id === lead.id ? 'bg-brand-accent text-white' : 'hover:bg-gray-100'}`}
-                                    >
-                                        <div>
-                                            <p className="font-semibold">{lead.name}</p>
-                                            <p className={`text-sm ${selectedLead?.id === lead.id ? 'text-gray-200' : 'text-brand-text-light'}`}>{lead.phone}</p>
-                                        </div>
-                                        <button onClick={(e) => { e.stopPropagation(); openWhatsApp(lead); }} className={`p-2 rounded-full ${selectedLead?.id === lead.id ? 'hover:bg-blue-500' : 'hover:bg-gray-200'}`}>
-                                            <WhatsappIcon className="h-6 w-6 text-green-500" />
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    </div>
-
-                    {/* Right: Message Composer */}
-                    <div className="w-full md:w-2/3 bg-white p-6 rounded-lg shadow-md flex flex-col">
-                        {selectedLead ? (
-                            <>
-                                <h3 className="text-xl font-bold text-brand-text mb-4 border-b pb-3">Conversar com {selectedLead.name}</h3>
-                                <div className="mb-4">
-                                    <label htmlFor="template" className="block text-sm font-medium text-brand-text-light mb-1">Usar modelo de mensagem</label>
-                                    <select id="template" onChange={handleTemplateChange} className="w-full p-2 border border-gray-300 rounded-md focus:ring-brand-primary focus:border-brand-primary">
-                                        {templates.map(t => <option key={t.name} value={t.text}>{t.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="mb-4 flex-grow flex flex-col">
-                                    <label htmlFor="message" className="block text-sm font-medium text-brand-text-light mb-1">Mensagem</label>
-                                    <textarea
-                                        id="message"
-                                        value={message}
-                                        onChange={(e) => setMessage(e.target.value)}
-                                        className="w-full p-2 border border-gray-300 rounded-md flex-grow focus:ring-brand-primary focus:border-brand-primary"
-                                        rows={10}
-                                    />
-                                </div>
-                                <div className="flex justify-end">
-                                    <button onClick={handleSend} className="bg-green-500 text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors">
-                                        <WhatsappIcon className="h-5 w-5" />
-                                        Enviar no WhatsApp
-                                    </button>
-                                </div>
-                            </>
-                        ) : (
-                            <div className="flex flex-col justify-center items-center h-full text-center text-brand-text-light">
-                                <MessageCircleIcon className="h-16 w-16 mb-4 text-gray-300" />
-                                <h3 className="text-xl font-semibold">Selecione um lead</h3>
-                                <p>Escolha um lead na lista ao lado para começar a compor sua mensagem.</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </PageContainer>
-    );
-};
-
 
 // DASHBOARD COMPONENTS
 const KpiCard: React.FC<{ title: string; value: string; icon: React.FC<React.SVGProps<SVGSVGElement>>; description: string }> = ({ title, value, icon: Icon, description }) => (
@@ -1428,7 +1359,6 @@ const MainLayout = () => {
                 <Route path="/leads/:id" element={<LeadDetailPage />} />
                 <Route path="/properties" element={<PropertiesListPage />} />
                 <Route path="/agenda" element={<AgendaPage />} />
-                <Route path="/whatsapp" element={<WhatsappPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="*" element={<Navigate to="/" />} />
             </Routes>
