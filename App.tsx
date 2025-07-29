@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useMemo, useEffect, useCallback, createContext, useContext, useRef } from 'react';
 import { Routes, Route, Link, useParams, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
@@ -41,6 +42,7 @@ const XIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="
 const MailIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>);
 const PhoneIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>);
 const LogOutIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> );
+const WhatsappIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19.03 4.97a10.01 10.01 0 0 0-14.06 14.06l-1.03 3.98l4.08-1.02a10.01 10.01 0 0 0 14.06-14.06zM8.47 18.53c-1.25 0-2.45-.38-3.47-1.05l-.25-.15l-2.58.65l.66-2.52l-.17-.26a6.97 6.97 0 0 1-1.07-3.69c0-3.86 3.14-7 7-7s7 3.14 7 7c0 3.86-3.14 7-7 7zm4.37-5.1c-.22-.11-.76-.38-1.04-.42c-.28-.04-.48.11-.69.37c-.2.26-.78.97-.96 1.17c-.18.2-.36.22-.66.11c-.3-.11-1.25-.46-2.38-1.47c-.88-.78-1.48-1.75-1.65-2.05c-.17-.3-.02-.46.1-.61c.11-.13.24-.34.37-.51c.12-.17.16-.28.24-.46c.08-.18.04-.34-.02-.45c-.06-.11-.57-1.37-.78-1.87c-.2-.5-.41-.43-.57-.43h-.48c-.16 0-.41.06-.62.3c-.2.24-.78.76-.78 1.85s.8 2.15.91 2.3c.11.15 1.57 2.4 3.8 3.35c.54.23.95.36 1.28.46c.5.15.95.13 1.3.08c.39-.05 1.25-.51 1.42-1c.18-.48.18-.9.13-1c-.05-.1-.18-.16-.4-.27z"></path></svg>);
 
 // AUTHENTICATION
 interface AuthContextType {
@@ -840,15 +842,125 @@ const PropertiesListPage = () => {
 };
 
 const WhatsappPage = () => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+    const [message, setMessage] = useState('');
+
+    const filteredLeads = useMemo(() => {
+        return mockLeads.filter(lead =>
+            lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            lead.phone.includes(searchTerm)
+        );
+    }, [searchTerm]);
+
+    const templates = useMemo(() => [
+        { name: "Saudação", text: "Olá, {leadName}! Tudo bem? Vi que demonstrou interesse em nossos imóveis e gostaria de ajudar." },
+        { name: "Follow-up", text: "Olá, {leadName}. Passando para saber se conseguiu avaliar as opções de imóveis que enviei." },
+        { name: "Agendar Visita", text: "Olá, {leadName}. Qual seria o melhor dia e horário para agendarmos uma visita?" }
+    ], []);
+
+    const handleSelectLead = useCallback((lead: Lead) => {
+        setSelectedLead(lead);
+        setMessage(templates[0].text.replace('{leadName}', lead.name.split(' ')[0]));
+    }, [templates]);
+
+    const handleTemplateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        if (selectedLead) {
+            setMessage(e.target.value.replace('{leadName}', selectedLead.name.split(' ')[0]));
+        }
+    };
+
+    const openWhatsApp = (lead: Lead, text?: string) => {
+        const phone = lead.phone.replace(/\D/g, '');
+        // Assuming Brazilian numbers, add 55 if not present
+        const fullPhone = phone.length > 11 ? phone : `55${phone}`;
+        let url = `https://wa.me/${fullPhone}`;
+        if (text) {
+            url += `?text=${encodeURIComponent(text)}`;
+        }
+        window.open(url, '_blank', 'noopener,noreferrer');
+    };
+
+    const handleSend = () => {
+        if (selectedLead) {
+            openWhatsApp(selectedLead, message);
+        }
+    };
+
     return (
-        <PageContainer title="WhatsApp" noPadding>
-            <div className="h-[calc(100vh-140px)] md:h-[calc(100vh-125px)] flex flex-col">
-                 <iframe
-                    src="https://web.whatsapp.com/"
-                    className="w-full h-full border-0"
-                    title="WhatsApp Web"
-                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-                ></iframe>
+        <PageContainer title="Integração WhatsApp" noPadding>
+            <div className="p-4 sm:p-6 lg:p-8">
+                <div className="flex flex-col md:flex-row gap-6 h-[calc(100vh-230px)] md:h-[calc(100vh-190px)]">
+                    {/* Left: Lead List */}
+                    <div className="w-full md:w-1/3 bg-white p-4 rounded-lg shadow-md flex flex-col">
+                        <div className="relative mb-4">
+                            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                            <input
+                                type="text"
+                                placeholder="Buscar lead..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="pl-10 pr-4 py-2 w-full rounded-full border border-gray-300 focus:ring-2 focus:ring-brand-primary focus:outline-none"
+                            />
+                        </div>
+                        <div className="flex-grow overflow-y-auto pr-2">
+                            <ul className="space-y-2">
+                                {filteredLeads.map(lead => (
+                                    <li
+                                        key={lead.id}
+                                        onClick={() => handleSelectLead(lead)}
+                                        className={`p-3 rounded-lg cursor-pointer flex justify-between items-center transition-colors ${selectedLead?.id === lead.id ? 'bg-brand-accent text-white' : 'hover:bg-gray-100'}`}
+                                    >
+                                        <div>
+                                            <p className="font-semibold">{lead.name}</p>
+                                            <p className={`text-sm ${selectedLead?.id === lead.id ? 'text-gray-200' : 'text-brand-text-light'}`}>{lead.phone}</p>
+                                        </div>
+                                        <button onClick={(e) => { e.stopPropagation(); openWhatsApp(lead); }} className={`p-2 rounded-full ${selectedLead?.id === lead.id ? 'hover:bg-blue-500' : 'hover:bg-gray-200'}`}>
+                                            <WhatsappIcon className="h-6 w-6 text-green-500" />
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+
+                    {/* Right: Message Composer */}
+                    <div className="w-full md:w-2/3 bg-white p-6 rounded-lg shadow-md flex flex-col">
+                        {selectedLead ? (
+                            <>
+                                <h3 className="text-xl font-bold text-brand-text mb-4 border-b pb-3">Conversar com {selectedLead.name}</h3>
+                                <div className="mb-4">
+                                    <label htmlFor="template" className="block text-sm font-medium text-brand-text-light mb-1">Usar modelo de mensagem</label>
+                                    <select id="template" onChange={handleTemplateChange} className="w-full p-2 border border-gray-300 rounded-md focus:ring-brand-primary focus:border-brand-primary">
+                                        {templates.map(t => <option key={t.name} value={t.text}>{t.name}</option>)}
+                                    </select>
+                                </div>
+                                <div className="mb-4 flex-grow flex flex-col">
+                                    <label htmlFor="message" className="block text-sm font-medium text-brand-text-light mb-1">Mensagem</label>
+                                    <textarea
+                                        id="message"
+                                        value={message}
+                                        onChange={(e) => setMessage(e.target.value)}
+                                        className="w-full p-2 border border-gray-300 rounded-md flex-grow focus:ring-brand-primary focus:border-brand-primary"
+                                        rows={10}
+                                    />
+                                </div>
+                                <div className="flex justify-end">
+                                    <button onClick={handleSend} className="bg-green-500 text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors">
+                                        <WhatsappIcon className="h-5 w-5" />
+                                        Enviar no WhatsApp
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="flex flex-col justify-center items-center h-full text-center text-brand-text-light">
+                                <MessageCircleIcon className="h-16 w-16 mb-4 text-gray-300" />
+                                <h3 className="text-xl font-semibold">Selecione um lead</h3>
+                                <p>Escolha um lead na lista ao lado para começar a compor sua mensagem.</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
             </div>
         </PageContainer>
     );
