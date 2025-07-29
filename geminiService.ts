@@ -1,7 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Lead, Property } from './types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// IMPORTANTE: Para que a IA funcione, substitua "YOUR_API_KEY_HERE" pela sua chave de API do Google AI Studio.
+const ai = new GoogleGenAI({ apiKey: "AIzaSyDvl2fmUZ-H10AJ0BmLGRVfX98tOW8PDdY" });
 
 const propertySuggestionSchema = {
     type: Type.OBJECT,
@@ -56,6 +57,10 @@ export const getPropertySuggestions = async (lead: Lead, properties: Property[])
 
     } catch (error) {
         console.error("Error calling Gemini API:", error);
+        // @ts-ignore
+        if (error.message?.includes('API key not valid')) {
+            console.error("Parece que sua API Key não é válida ou não foi informada. Verifique se você a substituiu corretamente no arquivo geminiService.ts.");
+        }
         return [];
     }
 };
