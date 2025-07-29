@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Lead, Property } from './types';
 
-// IMPORTANTE: Para que a IA funcione, substitua "YOUR_API_KEY_HERE" pela sua chave de API do Google AI Studio.
+// The API key is loaded from environment variables.
 const ai = new GoogleGenAI({ apiKey: "AIzaSyDvl2fmUZ-H10AJ0BmLGRVfX98tOW8PDdY" });
 
 const propertySuggestionSchema = {
