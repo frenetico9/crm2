@@ -2,6 +2,8 @@
 
 
 
+
+
 import React, { useState, useMemo, useEffect, useCallback, createContext, useContext, useRef } from 'react';
 import { Routes, Route, Link, useParams, useNavigate, useLocation, Navigate, useSearchParams } from 'react-router-dom';
 import {
@@ -595,21 +597,23 @@ const LoginPage = () => {
 };
 
 const RegisterPage = () => {
-    const navigate = useNavigate();
     const { client } = useAuth();
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [message, setMessage] = useState('');
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setMessage('');
         try {
             const { error } = await client.auth.signUp({
                 email,
                 password,
                 options: {
+                    emailRedirectTo: window.location.origin,
                     data: {
                         name: name,
                         avatar_url: `https://i.pravatar.cc/150?u=${email}`,
@@ -617,7 +621,7 @@ const RegisterPage = () => {
                 }
             });
             if (error) throw error;
-            navigate('/');
+            setMessage('Cadastro realizado! Verifique seu e-mail para confirmar sua conta.');
         } catch (err: any) {
             setError(err.message || 'Não foi possível realizar o cadastro.');
         }
@@ -626,6 +630,7 @@ const RegisterPage = () => {
     return (
         <AuthLayout title="Crie sua conta de corretor">
             <form onSubmit={handleSubmit} className="space-y-4">
+                {message && <p className="bg-green-100 text-green-700 p-3 rounded-md text-sm">{message}</p>}
                 {error && <p className="bg-red-100 text-red-700 p-3 rounded-md text-sm">{error}</p>}
                 <div>
                     <label htmlFor="name" className="block text-sm font-medium text-brand-text-light">Nome Completo</label>
