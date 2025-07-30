@@ -2255,23 +2255,24 @@ const AgendaPage = () => {
     const handleCloseModal = () => setSelectedEvent(undefined);
     
     const handleSaveNewVisit = async (newVisit: Omit<Visit, 'id' | 'created_at'>) => {
-        const { error } = await client.from('visits').insert(newVisit);
+        const { data, error } = await client.from('visits').insert(newVisit).select().single();
         if (error) {
             alert("Erro ao salvar visita: " + error.message);
-        } else {
-            // State will be updated by the realtime subscription
+        } else if (data) {
+            setVisits(currentVisits => [...currentVisits, data]);
             setIsNewEventModalOpen(false);
         }
     };
     
     const handleDeleteVisit = async (visitId: string) => {
         if (window.confirm("Tem certeza que deseja cancelar esta visita?")) {
-            handleCloseModal();
             const { error } = await client.from('visits').delete().eq('id', visitId);
             if (error) {
                 alert("Falha ao cancelar a visita: " + error.message);
+            } else {
+                setVisits(currentVisits => currentVisits.filter(v => v.id !== visitId));
+                handleCloseModal();
             }
-            // State will be updated by the realtime subscription
         }
     };
 
