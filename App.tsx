@@ -1,7 +1,5 @@
 
 
-
-
 import React, { useState, useMemo, useEffect, useCallback, createContext, useContext, useRef } from 'react';
 import { Routes, Route, Link, useParams, useNavigate, useLocation, Navigate, useSearchParams } from 'react-router-dom';
 import {
@@ -57,7 +55,8 @@ const BellIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns
 const CopyIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>;
 const ListIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>;
 const LayoutGridIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/></svg>;
-
+const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>;
+const ArrowDownIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>;
 
 // --- AUTHENTICATION ---
 interface AuthContextType {
@@ -595,21 +594,23 @@ const LoginPage = () => {
 };
 
 const RegisterPage = () => {
-    const navigate = useNavigate();
     const { client } = useAuth();
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [message, setMessage] = useState('');
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setMessage('');
         try {
             const { error } = await client.auth.signUp({
                 email,
                 password,
                 options: {
+                    emailRedirectTo: window.location.origin,
                     data: {
                         name: name,
                         avatar_url: `https://i.pravatar.cc/150?u=${email}`,
@@ -617,7 +618,7 @@ const RegisterPage = () => {
                 }
             });
             if (error) throw error;
-            navigate('/');
+            setMessage('Cadastro realizado! Verifique seu e-mail para confirmar sua conta.');
         } catch (err: any) {
             setError(err.message || 'Não foi possível realizar o cadastro.');
         }
@@ -626,6 +627,7 @@ const RegisterPage = () => {
     return (
         <AuthLayout title="Crie sua conta de corretor">
             <form onSubmit={handleSubmit} className="space-y-4">
+                {message && <p className="bg-green-100 text-green-700 p-3 rounded-md text-sm">{message}</p>}
                 {error && <p className="bg-red-100 text-red-700 p-3 rounded-md text-sm">{error}</p>}
                 <div>
                     <label htmlFor="name" className="block text-sm font-medium text-brand-text-light">Nome Completo</label>
@@ -696,7 +698,7 @@ const ForgotPasswordPage = () => {
 // --- PAGES & MAIN LOGIC ---
 
 const ProfilePage = () => {
-    const { profile, session, client } = useAuth();
+    const { profile, session, client, logout } = useAuth();
     const [name, setName] = useState(profile?.name || '');
     const [phone, setPhone] = useState(profile?.phone || '');
     const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || '');
@@ -727,6 +729,9 @@ const ProfilePage = () => {
             if(error) throw error;
 
             setMessage('Perfil atualizado com sucesso!');
+            // Trigger a re-fetch of profile data by briefly logging out/in state-wise (not a full logout)
+            // A better way is to have a function in AuthContext to refresh the profile.
+            // For now, a success message is enough as other parts of the app use realtime.
             setTimeout(() => setMessage(''), 3000);
         } catch (error: any) {
             setMessage('Falha ao atualizar o perfil: ' + error.message);
@@ -785,17 +790,17 @@ const LeadsKanbanView: React.FC<{ leads: Lead[], agents: Agent[] }> = ({ leads, 
 
     const handleDrop = async (e: React.DragEvent<HTMLDivElement>, status: LeadStatus) => {
         const leadId = e.dataTransfer.getData('leadId');
-        // Optimistic update can be added here
+        setDraggingLeadId(null);
+        
         const { error } = await client
             .from('leads')
-            .update({ status: status })
+            .update({ status: status, last_contact: new Date().toISOString() })
             .eq('id', leadId);
 
         if (error) {
             console.error("Failed to update lead status", error);
-            // Revert optimistic update if it failed
+            alert("Falha ao mover o lead.");
         }
-        setDraggingLeadId(null);
     };
     
     const columns: LeadStatus[] = [LeadStatus.Novo, LeadStatus.EmNegociacao, LeadStatus.Visitou, LeadStatus.Fechado, LeadStatus.Perdido];
@@ -861,36 +866,46 @@ const LeadsListPage = () => {
         }
     }, [searchParams]);
 
-    useEffect(() => {
-        const fetchLeadsAndAgents = async () => {
-            if (!profile) return;
-            setLoading(true);
-            const { data: agentsData } = await client.from('agents').select('*');
-            setAgents(agentsData || []);
+    const fetchLeadsAndAgents = useCallback(async () => {
+        if (!profile) return;
+        setLoading(true);
+        const agentsPromise = client.from('agents').select('*');
+        
+        let leadsQuery = client.from('leads').select('*').eq('agent_id', profile.id);
+        if (activeFilter !== 'Todos') {
+            leadsQuery = leadsQuery.eq('status', activeFilter);
+        }
+        if(searchTerm) {
+            leadsQuery = leadsQuery.ilike('name', `%${searchTerm}%`);
+        }
+        const leadsPromise = leadsQuery.order('created_at', { ascending: false });
 
-            let query = client.from('leads').select('*').eq('agent_id', profile.id);
-            if (activeFilter !== 'Todos') {
-                query = query.eq('status', activeFilter);
-            }
-            if(searchTerm) {
-                query = query.ilike('name', `%${searchTerm}%`);
-            }
-            const { data: leadsData } = await query.order('created_at', { ascending: false });
-            setLeads(leadsData || []);
-            setLoading(false);
-        };
+        const [{ data: agentsData }, { data: leadsData }] = await Promise.all([agentsPromise, leadsPromise]);
+        
+        setAgents(agentsData || []);
+        setLeads(leadsData || []);
+        setLoading(false);
+    }, [client, profile, activeFilter, searchTerm]);
+
+    useEffect(() => {
+        if (!profile) return;
         
         fetchLeadsAndAgents();
         
-        const channel = client.channel('leads-page-channel')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, fetchLeadsAndAgents)
+        const leadsChannel = client.channel('leads-page-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'leads', filter: `agent_id=eq.${profile.id}` }, fetchLeadsAndAgents)
+            .subscribe();
+            
+        const agentsChannel = client.channel('agents-page-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'agents' }, fetchLeadsAndAgents)
             .subscribe();
             
         return () => {
-            client.removeChannel(channel);
-        }
+            client.removeChannel(leadsChannel);
+            client.removeChannel(agentsChannel);
+        };
 
-    }, [profile, activeFilter, searchTerm, client]);
+    }, [profile, client, fetchLeadsAndAgents]);
 
 
     const filters: (LeadStatus | 'Todos')[] = ['Todos', LeadStatus.Novo, LeadStatus.EmNegociacao, LeadStatus.Visitou, LeadStatus.Fechado, LeadStatus.Perdido];
@@ -1147,6 +1162,7 @@ const AIWhatsappSuggester: React.FC<{ lead: Lead }> = ({ lead }) => {
 const LeadDetailPage = () => {
     const { id } = useParams<{ id: string }>();
     const { client } = useAuth();
+    const navigate = useNavigate();
     const [lead, setLead] = useState<Lead | null>(null);
     const [agent, setAgent] = useState<Agent | null>(null);
 
@@ -1161,6 +1177,7 @@ const LeadDetailPage = () => {
             
             if (error) {
                 console.error("Error fetching lead", error);
+                setLead(null); // Handle case where lead is not found
             } else if (leadData) {
                 setLead(leadData);
                 const { data: agentData } = await client
@@ -1174,14 +1191,32 @@ const LeadDetailPage = () => {
         fetchLeadDetails();
     }, [id, client]);
     
+    const handleDeleteLead = async () => {
+        if (!lead) return;
+        if (window.confirm(`Tem certeza que deseja excluir o lead "${lead.name}"? Esta ação não pode ser desfeita.`)) {
+            const { error } = await client.from('leads').delete().eq('id', lead.id);
+            if (error) {
+                alert("Falha ao excluir o lead: " + error.message);
+            } else {
+                alert("Lead excluído com sucesso.");
+                navigate('/leads');
+            }
+        }
+    };
+
     if (!lead) {
-        return <PageContainer title="Carregando..." showBackButton>Carregando dados do lead...</PageContainer>;
+        return <PageContainer title="Carregando..." showBackButton>Carregando dados do lead ou lead não encontrado...</PageContainer>;
     }
 
     const formatPrice = (price: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
 
     return (
-        <PageContainer title={lead.name} showBackButton>
+        <PageContainer title={lead.name} showBackButton actions={
+            <button onClick={handleDeleteLead} className="bg-red-500 text-white px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-red-600 transition-colors text-sm font-medium">
+                <TrashIcon className="h-4 w-4"/> 
+                <span className="hidden sm:inline">Excluir</span>
+            </button>
+        }>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Left Column: Lead Details & AI Actions */}
                 <div className="lg:col-span-2 space-y-6">
@@ -1201,7 +1236,7 @@ const LeadDetailPage = () => {
                             </div>
                             <div className="p-3 bg-gray-50 rounded-lg">
                                 <p className="text-sm text-brand-text-light">Corretor</p>
-                                <p className="font-bold text-lg text-brand-text">{agent?.name}</p>
+                                <p className="font-bold text-lg text-brand-text truncate">{agent?.name}</p>
                             </div>
                             <div className="p-3 bg-gray-50 rounded-lg col-span-2">
                                 <p className="text-sm text-brand-text-light">Orçamento</p>
@@ -1236,22 +1271,31 @@ const PropertiesListPage = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [activeFilter, setActiveFilter] = useState<PropertyStatus | 'Todos'>('Todos');
 
+    const fetchProperties = useCallback(async () => {
+        setLoading(true);
+        let query = client.from('properties').select('*');
+        if (activeFilter !== 'Todos') {
+            query = query.eq('status', activeFilter);
+        }
+        if (searchTerm) {
+            query = query.ilike('title', `%${searchTerm}%`);
+        }
+        const { data, error } = await query.order('created_at', { ascending: false });
+        if (data) setProperties(data);
+        setLoading(false);
+    }, [client, searchTerm, activeFilter]);
+
     useEffect(() => {
-        const fetchProperties = async () => {
-            setLoading(true);
-            let query = client.from('properties').select('*');
-            if(activeFilter !== 'Todos') {
-                query = query.eq('status', activeFilter);
-            }
-             if(searchTerm) {
-                query = query.ilike('title', `%${searchTerm}%`);
-            }
-            const { data, error } = await query.order('created_at', { ascending: false });
-            if(data) setProperties(data);
-            setLoading(false);
-        };
         fetchProperties();
-    }, [searchTerm, activeFilter, client]);
+        
+        const channel = client.channel('properties-page-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'properties' }, fetchProperties)
+            .subscribe();
+            
+        return () => {
+            client.removeChannel(channel);
+        };
+    }, [client, fetchProperties]);
 
     const filters: (PropertyStatus | 'Todos')[] = ['Todos', PropertyStatus.Disponivel, PropertyStatus.EmNegociacao, PropertyStatus.Vendido];
 
@@ -1309,33 +1353,38 @@ const WhatsappPage = () => {
     const [newMessage, setNewMessage] = useState('');
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
+    const fetchData = useCallback(async () => {
+        if (!profile) return;
+        const agentsPromise = client.from('agents').select('*');
+        const leadsPromise = client
+            .from('leads')
+            .select('*')
+            .eq('agent_id', profile.id)
+            .order('last_contact', { ascending: false });
+        
+        const [agentsRes, leadsRes] = await Promise.all([agentsPromise, leadsPromise]);
+        
+        setAgents(agentsRes.data || []);
+        setLeads(leadsRes.data || []);
+    }, [profile, client]);
+
     useEffect(() => {
         if (!profile) return;
-        
-        const fetchData = async () => {
-            const { data: agentsData } = await client.from('agents').select('*');
-            setAgents(agentsData || []);
-            
-            const { data: leadsData } = await client
-                .from('leads')
-                .select('*')
-                .eq('agent_id', profile.id)
-                .order('last_contact', { ascending: false });
-            setLeads(leadsData || []);
-        };
-        
         fetchData();
 
-        const channel = client.channel('whatsapp-leads-channel')
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'leads', filter: `agent_id=eq.${profile.id}` }, (payload) => {
-                 setLeads(currentLeads => currentLeads.map(l => l.id === payload.new.id ? payload.new as Lead : l));
-            })
+        const leadsChannel = client.channel('whatsapp-leads-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'leads', filter: `agent_id=eq.${profile.id}` }, fetchData)
+            .subscribe();
+            
+        const agentsChannel = client.channel('whatsapp-agents-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'agents' }, fetchData)
             .subscribe();
 
         return () => {
-            client.removeChannel(channel);
+            client.removeChannel(leadsChannel);
+            client.removeChannel(agentsChannel);
         };
-    }, [profile, client]);
+    }, [profile, client, fetchData]);
 
 
     useEffect(() => {
@@ -1538,6 +1587,19 @@ const PropertyDetailPage = () => {
         fetchPropertyDetails();
     }, [id, client]);
 
+    const handleDeleteProperty = async () => {
+        if (!property) return;
+        if (window.confirm(`Tem certeza que deseja excluir o imóvel "${property.title}"? Esta ação não pode ser desfeita.`)) {
+            const { error } = await client.from('properties').delete().eq('id', property.id);
+            if (error) {
+                alert("Falha ao excluir o imóvel: " + error.message);
+            } else {
+                alert("Imóvel excluído com sucesso.");
+                navigate('/properties');
+            }
+        }
+    };
+
 
     if (!property) {
         return <PageContainer title="Carregando..." showBackButton>Carregando dados do imóvel...</PageContainer>;
@@ -1547,9 +1609,15 @@ const PropertyDetailPage = () => {
 
     return (
         <PageContainer title={property.title} showBackButton actions={
-             <button onClick={() => navigate(`/properties/${id}/edit`)} className="bg-brand-primary text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-opacity-90 transition-colors">
-                <PlusIcon className="h-5 w-5"/> Editar
-             </button>
+            <div className="flex items-center gap-2">
+                 <button onClick={() => navigate(`/properties/${id}/edit`)} className="bg-brand-primary text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-opacity-90 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                    <span className="hidden sm:inline">Editar</span>
+                 </button>
+                 <button onClick={handleDeleteProperty} title="Excluir Imóvel" className="bg-red-500 text-white p-2.5 rounded-lg hover:bg-red-600 transition-colors">
+                    <TrashIcon className="h-5 w-5"/>
+                </button>
+            </div>
         }>
             <div className="bg-white rounded-lg shadow-md overflow-hidden">
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-0">
@@ -1796,52 +1864,84 @@ const ChartContainer: React.FC<{ title: string; children: React.ReactNode }> = (
         {children}
     </div>
 );
-const ConversionFunnelChart: React.FC<{ data: { stage: string; value: number }[] }> = ({ data }) => {
+
+const ConversionFunnelChart: React.FC<{ data: { stage: LeadStatus; value: number }[] }> = ({ data }) => {
     const navigate = useNavigate();
-    if (!data.length) return null;
-    const maxValue = data[0].value;
-    const colors = ['#0052CC', '#4C9AFF', '#B3D4FF', '#EBF5FF'];
+    const funnelStagesOrder = [LeadStatus.Novo, LeadStatus.EmNegociacao, LeadStatus.Visitou, LeadStatus.Fechado];
+    
+    // Ensure stages are ordered correctly and have a value, even if 0
+    const orderedData = funnelStagesOrder.map(stageName => {
+        const found = data.find(d => d.stage === stageName);
+        return found || { stage: stageName, value: 0 };
+    });
+
+    const totalLeadsAtStart = orderedData[0]?.value || 0;
+    const colors = ['#0052CC', '#2684FF', '#57A8FF', '#8EC9FF'];
+
+    if (totalLeadsAtStart === 0) {
+        return <div className="flex items-center justify-center h-full text-gray-500">Nenhum lead no funil.</div>;
+    }
+
+    let lastValue = totalLeadsAtStart;
 
     return (
-        <div className="flex flex-col items-center space-y-1 w-full h-80 justify-center">
-            {data.map((item, index) => {
-                const prevValue = index > 0 ? data[index - 1].value : maxValue;
-                const percentage = maxValue > 0 ? (item.value / maxValue * 100).toFixed(1) : 0;
-                const dropOff = prevValue > 0 ? ((prevValue - item.value) / prevValue * 100).toFixed(1) : 0;
+        <div className="w-full py-4 px-2 space-y-2">
+            {orderedData.map((item, index) => {
+                if (item.value === 0 && index > 0 && (orderedData[index-1]?.value === 0)) return null; 
 
-                return (
-                    <div key={item.stage} className="flex flex-col items-center cursor-pointer group" onClick={() => navigate(`/leads?status=${item.stage}`)}>
-                        <div className="text-sm font-semibold text-brand-text">{item.stage} ({item.value})</div>
-                        <div className="relative" style={{ width: `${20 + (item.value / maxValue * 80)}%`, minWidth: '80px'}}>
-                            <div style={{ backgroundColor: colors[index % colors.length] }} className="h-10 rounded-sm flex items-center justify-center text-white font-bold text-sm transition-transform group-hover:scale-105">
-                                {percentage}%
-                            </div>
-                        </div>
-                        {index > 0 && (
-                            <div className="text-xs text-red-500 mt-1">
-                                <span>▼</span> {dropOff}% drop-off
+                const conversionRate = lastValue > 0 ? (item.value / lastValue) * 100 : 0;
+                const widthPercentage = totalLeadsAtStart > 0 ? (item.value / totalLeadsAtStart) * 90 + 10 : 0; // min 10% width
+                
+                const segment = (
+                    <div
+                        key={item.stage}
+                        className="w-full flex flex-col items-center"
+                    >
+                         {index > 0 && lastValue > 0 && (
+                            <div className="flex flex-col items-center text-xs text-gray-500 my-1">
+                               <ArrowDownIcon className="h-4 w-4" />
+                               <span>{conversionRate.toFixed(1)}%</span>
                             </div>
                         )}
+                        <div
+                            onClick={() => navigate(`/leads?status=${item.stage}`)}
+                            className="h-14 rounded-md shadow-sm text-white flex items-center justify-between px-4 cursor-pointer transition-transform hover:scale-105"
+                            style={{ backgroundColor: colors[index % colors.length], width: `${widthPercentage}%` }}
+                        >
+                            <span className="font-semibold">{item.stage}</span>
+                            <span className="text-2xl font-bold">{item.value}</span>
+                        </div>
                     </div>
                 );
+
+                if (item.value > 0) {
+                   lastValue = item.value;
+                } else if (index > 0) {
+                   lastValue = 0;
+                }
+                
+                return segment;
             })}
         </div>
     );
 };
+
 const VisitsTrendChart: React.FC<{ data: { day: string; visits: number }[] }> = ({ data }) => {
     const maxValue = Math.max(...data.map(d => d.visits), 0) || 1;
     return (
         <div className="h-80 flex items-end space-x-2 px-4 pt-4">
              {data.map((d, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
-                    <div className="w-full h-full flex items-end">
-                        <div 
-                            className="w-3/4 mx-auto bg-brand-primary rounded-t-md hover:bg-brand-accent transition-all duration-300" 
-                            style={{ height: `${(d.visits / maxValue) * 90}%` }}
-                            title={`${d.visits} visitas`}
-                        >
-                            <div className="text-center text-xs text-white opacity-0 hover:opacity-100 font-bold">{d.visits}</div>
-                        </div>
+                <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group">
+                    <div 
+                        className="w-3/4 mx-auto bg-brand-primary rounded-t-md group-hover:bg-brand-accent transition-all duration-300 flex items-center justify-center relative" 
+                        style={{ height: `${(d.visits / maxValue) * 90}%` }}
+                        title={`${d.visits} visitas`}
+                    >
+                        {d.visits > 0 && (
+                            <span className="text-sm text-white font-bold z-10">
+                                {d.visits}
+                            </span>
+                        )}
                     </div>
                     <div className="text-xs text-brand-text-light mt-2">{d.day}</div>
                 </div>
@@ -1983,7 +2083,7 @@ const DashboardPage = () => {
 interface NewVisitModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (visit: Omit<Visit, 'id' | 'created_at'>) => void;
+    onSave: (visit: Omit<Visit, 'id' | 'created_at'>) => Promise<void>;
     profile: Agent;
 }
 const NewVisitModal: React.FC<NewVisitModalProps> = ({ isOpen, onClose, onSave, profile }) => {
@@ -2009,19 +2109,23 @@ const NewVisitModal: React.FC<NewVisitModalProps> = ({ isOpen, onClose, onSave, 
             setLeads(leadsRes.data || []);
             setProperties(propertiesRes.data || []);
         };
-        fetchData();
-    }, [profile, client]);
+        if(isOpen) {
+            fetchData();
+        }
+    }, [isOpen, profile, client]);
 
     useEffect(() => {
         if(leadId) {
             const lead = leads.find(l => l.id === leadId);
             if(lead) setTitle(`Visita com ${lead.name}`);
+        } else {
+            setTitle('');
         }
     }, [leadId, leads]);
 
     if (!isOpen) return null;
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const start = new Date(`${startDate}T${startTime}`);
         const end = new Date(start.getTime() + 60 * 60 * 1000); // Add 1 hour
@@ -2030,8 +2134,7 @@ const NewVisitModal: React.FC<NewVisitModalProps> = ({ isOpen, onClose, onSave, 
             return;
         }
         
-        onSave({ title, start: start.toISOString(), end: end.toISOString(), agent_id: agentId, lead_id: leadId, property_id: propertyId });
-        onClose();
+        await onSave({ title, start: start.toISOString(), end: end.toISOString(), agent_id: agentId, lead_id: leadId, property_id: propertyId });
     };
 
     return (
@@ -2103,28 +2206,33 @@ const AgendaPage = () => {
     const [isNewEventModalOpen, setIsNewEventModalOpen] = useState(false);
     const [currentDate, setCurrentDate] = useState(new Date());
 
+    const fetchAllData = useCallback(async () => {
+         if(!profile) return;
+         const [agentsRes, leadsRes, propertiesRes, visitsRes] = await Promise.all([
+             client.from('agents').select('*'),
+             client.from('leads').select('id, name'),
+             client.from('properties').select('id, title'),
+             client.from('visits').select('*').eq('agent_id', profile.id)
+         ]);
+         setAgents(agentsRes.data || []);
+         setLeads(leadsRes.data || []);
+         setProperties(propertiesRes.data || []);
+         setVisits(visitsRes.data || []);
+    }, [profile, client]);
+
+
     useEffect(() => {
         if(!profile) return;
-        const fetchAllData = async () => {
-            const [agentsRes, leadsRes, propertiesRes, visitsRes] = await Promise.all([
-                 client.from('agents').select('*'),
-                 client.from('leads').select('id, name'),
-                 client.from('properties').select('id, title'),
-                 client.from('visits').select('*').eq('agent_id', profile.id)
-            ]);
-            setAgents(agentsRes.data || []);
-            setLeads(leadsRes.data || []);
-            setProperties(propertiesRes.data || []);
-            setVisits(visitsRes.data || []);
-        };
         fetchAllData();
 
          const channel = client.channel('agenda-visits-channel')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'visits' }, fetchAllData)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'visits', filter: `agent_id=eq.${profile.id}` }, (payload) => {
+                 fetchAllData();
+            })
             .subscribe();
 
         return () => { client.removeChannel(channel); };
-    }, [profile, client]);
+    }, [profile, client, fetchAllData]);
 
 
     const weekStart = useMemo(() => startOfWeek(currentDate, { locale: ptBR, weekStartsOn: 1 }), [currentDate]);
@@ -2149,11 +2257,30 @@ const AgendaPage = () => {
     const handleCloseModal = () => setSelectedEvent(undefined);
     
     const handleSaveNewVisit = async (newVisit: Omit<Visit, 'id' | 'created_at'>) => {
-        const { error } = await client.from('visits').insert(newVisit);
+        const { data, error } = await client.from('visits').insert(newVisit).select().single();
         if (error) {
             alert("Erro ao salvar visita: " + error.message);
-        } else {
+        } else if (data) {
+            setVisits(currentVisits => [...currentVisits, data]);
             setIsNewEventModalOpen(false);
+        }
+    };
+    
+    const handleDeleteVisit = async (visitId: string) => {
+        if (window.confirm("Tem certeza que deseja cancelar esta visita?")) {
+            // Using an RPC call is a robust way to handle deletions that might be
+            // affected by complex RLS policies. The associated SQL function
+            // should be created in the Supabase dashboard.
+            const { error } = await client.rpc('delete_visit', { visit_id_to_delete: visitId });
+
+            if (error) {
+                alert("Falha ao cancelar a visita: " + error.message);
+            } else {
+                // Success! The RPC call handled the deletion.
+                // Update local state for immediate UI feedback.
+                setVisits(currentVisits => currentVisits.filter(v => v.id !== visitId));
+                handleCloseModal();
+            }
         }
     };
 
@@ -2228,7 +2355,7 @@ const AgendaPage = () => {
 
             {/* Event Detail Modal */}
             {selectedEvent && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50" onClick={handleCloseModal}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4" onClick={handleCloseModal}>
                      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-xl font-bold text-brand-text">{selectedEvent.title}</h2>
@@ -2236,9 +2363,14 @@ const AgendaPage = () => {
                         </div>
                         <div className="space-y-4 text-brand-text-light">
                             <div className="flex items-center gap-3"><ClockIcon className="h-5 w-5"/><span>{format(new Date(selectedEvent.start), 'dd/MM/yyyy HH:mm', { locale: ptBR })} - {format(new Date(selectedEvent.end), 'HH:mm', { locale: ptBR })}</span></div>
-                            <div className="flex items-center gap-3"><UsersIcon className="h-5 w-5"/><span>Lead: {leads.find(l => l.id === selectedEvent.lead_id)?.name}</span></div>
-                            <div className="flex items-center gap-3"><BuildingIcon className="h-5 w-5"/><span>Imóvel: {properties.find(p => p.id === selectedEvent.property_id)?.title}</span></div>
-                            <div className="flex items-center gap-3"><StarIcon className="h-5 w-5"/><span>Corretor: {agents.find(a => a.id === selectedEvent.agent_id)?.name}</span></div>
+                            <div className="flex items-center gap-3"><UsersIcon className="h-5 w-5"/><span>Lead: {leads.find(l => l.id === selectedEvent.lead_id)?.name || 'N/A'}</span></div>
+                            <div className="flex items-center gap-3"><BuildingIcon className="h-5 w-5"/><span>Imóvel: {properties.find(p => p.id === selectedEvent.property_id)?.title || 'N/A'}</span></div>
+                            <div className="flex items-center gap-3"><StarIcon className="h-5 w-5"/><span>Corretor: {agents.find(a => a.id === selectedEvent.agent_id)?.name || 'N/A'}</span></div>
+                        </div>
+                         <div className="mt-6 pt-4 border-t flex justify-end">
+                            <button onClick={() => handleDeleteVisit(selectedEvent.id)} className="bg-red-100 text-red-700 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-red-200 transition-colors text-sm font-medium">
+                                <TrashIcon className="h-4 w-4" /> Cancelar Visita
+                            </button>
                         </div>
                     </div>
                 </div>
