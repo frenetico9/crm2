@@ -1,4 +1,5 @@
 
+
 import { createClient } from '@supabase/supabase-js'
 import type { Agent, Lead, Notification, Property, Visit, PropertyType, PropertyStatus, LeadStatus, WhatsappMessage } from './types'
 
@@ -126,7 +127,12 @@ export interface Database {
       [_: string]: never;
     };
     Functions: {
-      [_: string]: never;
+      delete_visit: {
+        Args: {
+          visit_id_to_delete: string;
+        };
+        Returns: undefined;
+      };
     };
   }
 }
