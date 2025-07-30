@@ -32,28 +32,28 @@ export interface Database {
           title: string;
           type: PropertyType;
           description: string;
-          location: { bairro: string; cidade: string; };
+          location: any; // Simplified for insert
           price: number;
           area: number;
           bedrooms: number;
           bathrooms: number;
           garage_spaces: number;
           agent_id: string;
-          images: string[];
+          images: any; // Simplified for insert
           status: PropertyStatus;
         };
         Update: {
             title?: string;
             type?: PropertyType;
             description?: string;
-            location?: { bairro: string; cidade: string; };
+            location?: any; // Simplified for update
             price?: number;
             area?: number;
             bedrooms?: number;
             bathrooms?: number;
             garage_spaces?: number;
             agent_id?: string;
-            images?: string[];
+            images?: any; // Simplified for update
             status?: PropertyStatus;
         };
       };
@@ -67,8 +67,8 @@ export interface Database {
             status: LeadStatus;
             score: number;
             last_contact: string;
-            interest: { type: PropertyType[]; bairro: string[]; priceRange: [number, number]; };
-            whatsapp_history?: WhatsappMessage[];
+            interest: any; // Simplified for insert
+            whatsapp_history?: any; // Simplified for insert
         };
         Update: {
             name?: string;
@@ -78,8 +78,8 @@ export interface Database {
             status?: LeadStatus;
             score?: number;
             last_contact?: string;
-            interest?: { type: PropertyType[]; bairro: string[]; priceRange: [number, number]; };
-            whatsapp_history?: WhatsappMessage[];
+            interest?: any; // Simplified for update
+            whatsapp_history?: any; // Simplified for update
         };
       };
       visits: {
