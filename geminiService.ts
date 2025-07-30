@@ -1,66 +1,71 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import type { Lead, Property } from './types';
 
-// The API key is loaded from environment variables.
-const ai = new GoogleGenAI({ apiKey: "AIzaSyDvl2fmUZ-H10AJ0BmLGRVfX98tOW8PDdY" });
-
-const propertySuggestionSchema = {
-    type: Type.OBJECT,
-    properties: {
-        suggestions: {
-            type: Type.ARRAY,
-            description: "Array com os IDs dos 3 imóveis mais recomendados para o cliente.",
-            items: {
-                type: Type.STRING
-            }
-        }
-    },
-    required: ['suggestions']
-};
-
+// O frontend NÃO tem mais acesso direto à API do Gemini.
+// As funções agora atuam como clientes para o nosso próprio backend (serverless functions).
 
 export const getPropertySuggestions = async (lead: Lead, properties: Property[]): Promise<string[]> => {
     try {
-        const relevantProperties = properties.filter(p => p.status === 'Disponível');
-
-        const prompt = `
-            Analise o seguinte perfil de cliente e a lista de imóveis disponíveis.
-            
-            Perfil do Cliente:
-            - Interesses de tipo de imóvel: ${lead.interest.type.join(', ')}
-            - Bairros de interesse: ${lead.interest.bairro.join(', ')}
-            - Faixa de preço: R$${lead.interest.priceRange[0].toLocaleString('pt-BR')} a R$${lead.interest.priceRange[1].toLocaleString('pt-BR')}
-
-            Imóveis Disponíveis (JSON):
-            ${JSON.stringify(relevantProperties.map(p => ({id: p.id, title: p.title, type: p.type, location: p.location, price: p.price, area: p.area, bedrooms: p.bedrooms})))}
-
-            Com base na análise, retorne um objeto JSON com uma chave "suggestions" contendo um array com os IDs dos 3 imóveis que melhor correspondem aos interesses do cliente, em ordem de relevância.
-        `;
-
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: propertySuggestionSchema,
-            },
+        const response = await fetch('/api/propertySuggestions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lead, properties }),
         });
 
-        const jsonText = response.text.trim();
-        const parsedJson = JSON.parse(jsonText);
-        
-        if (parsedJson && parsedJson.suggestions && Array.isArray(parsedJson.suggestions)) {
-            return parsedJson.suggestions;
+        if (!response.ok) {
+            console.error("Error from backend:", await response.text());
+            return [];
         }
-        
-        return [];
+
+        const data = await response.json();
+        return data.suggestions || [];
 
     } catch (error) {
-        console.error("Error calling Gemini API:", error);
-        // @ts-ignore
-        if (error.message?.includes('API key not valid')) {
-            console.error("Parece que sua API Key não é válida ou não foi informada. Verifique se você a substituiu corretamente no arquivo geminiService.ts.");
-        }
+        console.error("Error calling /api/propertySuggestions:", error);
         return [];
+    }
+};
+
+export const getPropertyDescription = async (property: Omit<Property, 'images' | 'agentId' | 'status' | 'id'>): Promise<string> => {
+    try {
+        const response = await fetch('/api/generateDescription', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ property }),
+        });
+
+        if (!response.ok) {
+             console.error("Error from backend:", await response.text());
+            return "Erro ao contatar a IA para gerar a descrição.";
+        }
+
+        const data = await response.json();
+        return data.description || "Não foi possível gerar uma descrição.";
+
+    } catch (error) {
+        console.error("Error calling /api/generateDescription:", error);
+        return "Erro ao contatar a IA para gerar a descrição.";
+    }
+};
+
+
+export const getWhatsappSuggestion = async (lead: Lead): Promise<string> => {
+    try {
+        const response = await fetch('/api/whatsappSuggestion', {
+             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lead }),
+        });
+        
+        if (!response.ok) {
+            console.error("Error from backend:", await response.text());
+            return "Erro ao contatar a IA para gerar a sugestão.";
+        }
+        
+        const data = await response.json();
+        return data.message || "Não foi possível gerar uma sugestão.";
+
+    } catch (error) {
+        console.error("Error calling /api/whatsappSuggestion:", error);
+        return "Erro ao contatar a IA para gerar a sugestão.";
     }
 };
