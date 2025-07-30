@@ -696,7 +696,7 @@ const ForgotPasswordPage = () => {
 // --- PAGES & MAIN LOGIC ---
 
 const ProfilePage = () => {
-    const { profile, session, client } = useAuth();
+    const { profile, session, client, logout } = useAuth();
     const [name, setName] = useState(profile?.name || '');
     const [phone, setPhone] = useState(profile?.phone || '');
     const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || '');
@@ -727,6 +727,9 @@ const ProfilePage = () => {
             if(error) throw error;
 
             setMessage('Perfil atualizado com sucesso!');
+            // Trigger a re-fetch of profile data by briefly logging out/in state-wise (not a full logout)
+            // A better way is to have a function in AuthContext to refresh the profile.
+            // For now, a success message is enough as other parts of the app use realtime.
             setTimeout(() => setMessage(''), 3000);
         } catch (error: any) {
             setMessage('Falha ao atualizar o perfil: ' + error.message);
@@ -785,17 +788,17 @@ const LeadsKanbanView: React.FC<{ leads: Lead[], agents: Agent[] }> = ({ leads, 
 
     const handleDrop = async (e: React.DragEvent<HTMLDivElement>, status: LeadStatus) => {
         const leadId = e.dataTransfer.getData('leadId');
-        // Optimistic update can be added here
+        setDraggingLeadId(null);
+        
         const { error } = await client
             .from('leads')
-            .update({ status: status })
+            .update({ status: status, last_contact: new Date().toISOString() })
             .eq('id', leadId);
 
         if (error) {
             console.error("Failed to update lead status", error);
-            // Revert optimistic update if it failed
+            alert("Falha ao mover o lead.");
         }
-        setDraggingLeadId(null);
     };
     
     const columns: LeadStatus[] = [LeadStatus.Novo, LeadStatus.EmNegociacao, LeadStatus.Visitou, LeadStatus.Fechado, LeadStatus.Perdido];
@@ -861,36 +864,46 @@ const LeadsListPage = () => {
         }
     }, [searchParams]);
 
-    useEffect(() => {
-        const fetchLeadsAndAgents = async () => {
-            if (!profile) return;
-            setLoading(true);
-            const { data: agentsData } = await client.from('agents').select('*');
-            setAgents(agentsData || []);
+    const fetchLeadsAndAgents = useCallback(async () => {
+        if (!profile) return;
+        setLoading(true);
+        const agentsPromise = client.from('agents').select('*');
+        
+        let leadsQuery = client.from('leads').select('*').eq('agent_id', profile.id);
+        if (activeFilter !== 'Todos') {
+            leadsQuery = leadsQuery.eq('status', activeFilter);
+        }
+        if(searchTerm) {
+            leadsQuery = leadsQuery.ilike('name', `%${searchTerm}%`);
+        }
+        const leadsPromise = leadsQuery.order('created_at', { ascending: false });
 
-            let query = client.from('leads').select('*').eq('agent_id', profile.id);
-            if (activeFilter !== 'Todos') {
-                query = query.eq('status', activeFilter);
-            }
-            if(searchTerm) {
-                query = query.ilike('name', `%${searchTerm}%`);
-            }
-            const { data: leadsData } = await query.order('created_at', { ascending: false });
-            setLeads(leadsData || []);
-            setLoading(false);
-        };
+        const [{ data: agentsData }, { data: leadsData }] = await Promise.all([agentsPromise, leadsPromise]);
+        
+        setAgents(agentsData || []);
+        setLeads(leadsData || []);
+        setLoading(false);
+    }, [client, profile, activeFilter, searchTerm]);
+
+    useEffect(() => {
+        if (!profile) return;
         
         fetchLeadsAndAgents();
         
-        const channel = client.channel('leads-page-channel')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, fetchLeadsAndAgents)
+        const leadsChannel = client.channel('leads-page-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'leads', filter: `agent_id=eq.${profile.id}` }, fetchLeadsAndAgents)
+            .subscribe();
+            
+        const agentsChannel = client.channel('agents-page-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'agents' }, fetchLeadsAndAgents)
             .subscribe();
             
         return () => {
-            client.removeChannel(channel);
-        }
+            client.removeChannel(leadsChannel);
+            client.removeChannel(agentsChannel);
+        };
 
-    }, [profile, activeFilter, searchTerm, client]);
+    }, [profile, client, fetchLeadsAndAgents]);
 
 
     const filters: (LeadStatus | 'Todos')[] = ['Todos', LeadStatus.Novo, LeadStatus.EmNegociacao, LeadStatus.Visitou, LeadStatus.Fechado, LeadStatus.Perdido];
@@ -1256,22 +1269,31 @@ const PropertiesListPage = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [activeFilter, setActiveFilter] = useState<PropertyStatus | 'Todos'>('Todos');
 
+    const fetchProperties = useCallback(async () => {
+        setLoading(true);
+        let query = client.from('properties').select('*');
+        if (activeFilter !== 'Todos') {
+            query = query.eq('status', activeFilter);
+        }
+        if (searchTerm) {
+            query = query.ilike('title', `%${searchTerm}%`);
+        }
+        const { data, error } = await query.order('created_at', { ascending: false });
+        if (data) setProperties(data);
+        setLoading(false);
+    }, [client, searchTerm, activeFilter]);
+
     useEffect(() => {
-        const fetchProperties = async () => {
-            setLoading(true);
-            let query = client.from('properties').select('*');
-            if(activeFilter !== 'Todos') {
-                query = query.eq('status', activeFilter);
-            }
-             if(searchTerm) {
-                query = query.ilike('title', `%${searchTerm}%`);
-            }
-            const { data, error } = await query.order('created_at', { ascending: false });
-            if(data) setProperties(data);
-            setLoading(false);
-        };
         fetchProperties();
-    }, [searchTerm, activeFilter, client]);
+        
+        const channel = client.channel('properties-page-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'properties' }, fetchProperties)
+            .subscribe();
+            
+        return () => {
+            client.removeChannel(channel);
+        };
+    }, [client, fetchProperties]);
 
     const filters: (PropertyStatus | 'Todos')[] = ['Todos', PropertyStatus.Disponivel, PropertyStatus.EmNegociacao, PropertyStatus.Vendido];
 
@@ -1329,33 +1351,38 @@ const WhatsappPage = () => {
     const [newMessage, setNewMessage] = useState('');
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
+    const fetchData = useCallback(async () => {
+        if (!profile) return;
+        const agentsPromise = client.from('agents').select('*');
+        const leadsPromise = client
+            .from('leads')
+            .select('*')
+            .eq('agent_id', profile.id)
+            .order('last_contact', { ascending: false });
+        
+        const [agentsRes, leadsRes] = await Promise.all([agentsPromise, leadsPromise]);
+        
+        setAgents(agentsRes.data || []);
+        setLeads(leadsRes.data || []);
+    }, [profile, client]);
+
     useEffect(() => {
         if (!profile) return;
-        
-        const fetchData = async () => {
-            const { data: agentsData } = await client.from('agents').select('*');
-            setAgents(agentsData || []);
-            
-            const { data: leadsData } = await client
-                .from('leads')
-                .select('*')
-                .eq('agent_id', profile.id)
-                .order('last_contact', { ascending: false });
-            setLeads(leadsData || []);
-        };
-        
         fetchData();
 
-        const channel = client.channel('whatsapp-leads-channel')
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'leads', filter: `agent_id=eq.${profile.id}` }, (payload) => {
-                 setLeads(currentLeads => currentLeads.map(l => l.id === payload.new.id ? payload.new as Lead : l));
-            })
+        const leadsChannel = client.channel('whatsapp-leads-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'leads', filter: `agent_id=eq.${profile.id}` }, fetchData)
+            .subscribe();
+            
+        const agentsChannel = client.channel('whatsapp-agents-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'agents' }, fetchData)
             .subscribe();
 
         return () => {
-            client.removeChannel(channel);
+            client.removeChannel(leadsChannel);
+            client.removeChannel(agentsChannel);
         };
-    }, [profile, client]);
+    }, [profile, client, fetchData]);
 
 
     useEffect(() => {
