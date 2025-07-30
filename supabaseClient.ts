@@ -2,36 +2,55 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Agent, Lead, Notification, Property, Visit } from './types'
 
-// By making the Insert and Update types explicit, we resolve the
-// "Type instantiation is excessively deep" error that was occurring due to
-// the complexity of nested generic types like Partial<Omit<...>>.
+// By making the Insert and Update types explicit with type aliases, we help the
+// TypeScript compiler avoid "Type instantiation is excessively deep" errors that
+// can occur with complex nested generic types like Partial<Omit<...>>.
+
+// --- Type Aliases for Table Operations ---
+
+type AgentInsert = Omit<Agent, 'id' | 'email'>;
+type AgentUpdate = Partial<Omit<Agent, 'id' | 'email'>>;
+
+type PropertyInsert = Omit<Property, 'id' | 'created_at'>;
+type PropertyUpdate = Partial<Omit<Property, 'id' | 'created_at'>>;
+
+type LeadInsert = Omit<Lead, 'id' | 'created_at'>;
+type LeadUpdate = Partial<Omit<Lead, 'id' | 'created_at'>>;
+
+type VisitInsert = Omit<Visit, 'id' | 'created_at'>;
+type VisitUpdate = Partial<Omit<Visit, 'id' | 'created_at'>>;
+
+type NotificationInsert = Omit<Notification, 'id' | 'created_at'>;
+type NotificationUpdate = Partial<Omit<Notification, 'id' | 'created_at'>>;
+
+
 export interface Database {
   public: {
     Tables: {
       agents: {
         Row: Agent
-        Insert: Omit<Agent, 'id' | 'email'>
-        Update: Partial<Omit<Agent, 'id' | 'email'>>
+        Insert: AgentInsert
+        Update: AgentUpdate
       }
       properties: {
         Row: Property
-        Insert: Omit<Property, 'id' | 'created_at'>
-        Update: Partial<Omit<Property, 'id' | 'created_at'>>
+        Insert: PropertyInsert
+        Update: PropertyUpdate
       }
       leads: {
         Row: Lead
-        Insert: Omit<Lead, 'id' | 'created_at'>
-        Update: Partial<Omit<Lead, 'id' | 'created_at'>>
+        Insert: LeadInsert
+        Update: LeadUpdate
       }
       visits: {
         Row: Visit
-        Insert: Omit<Visit, 'id' | 'created_at'>
-        Update: Partial<Omit<Visit, 'id' | 'created_at'>>
+        Insert: VisitInsert
+        Update: VisitUpdate
       }
       notifications: {
         Row: Notification
-        Insert: Omit<Notification, 'id' | 'created_at'>
-        Update: Partial<Omit<Notification, 'id' | 'created_at'>>
+        Insert: NotificationInsert
+        Update: NotificationUpdate
       }
     }
     Views: {
