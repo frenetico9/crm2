@@ -1,10 +1,3 @@
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[];
 
 export enum LeadStatus {
   Novo = 'Novo',
@@ -32,7 +25,7 @@ export interface Agent {
   name: string;
   email: string;
   avatar_url: string;
-  phone?: string;
+  phone?: string | null;
 }
 
 export interface Property {
