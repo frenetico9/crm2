@@ -2268,18 +2268,18 @@ const AgendaPage = () => {
     
     const handleDeleteVisit = async (visitId: string) => {
         if (window.confirm("Tem certeza que deseja cancelar esta visita?")) {
-            const { data, error } = await client.from('visits').delete().eq('id', visitId).select();
+            // Using an RPC call is a robust way to handle deletions that might be
+            // affected by complex RLS policies. The associated SQL function
+            // should be created in the Supabase dashboard.
+            const { error } = await client.rpc('delete_visit', { visit_id_to_delete: visitId });
 
             if (error) {
                 alert("Falha ao cancelar a visita: " + error.message);
-            } else if (data && data.length > 0) {
-                 // Success! The visit was deleted from the database.
-                 // Update local state for immediate UI feedback.
+            } else {
+                // Success! The RPC call handled the deletion.
+                // Update local state for immediate UI feedback.
                 setVisits(currentVisits => currentVisits.filter(v => v.id !== visitId));
                 handleCloseModal();
-            } else {
-                // No error, but no rows were deleted (likely due to RLS policies)
-                alert("Não foi possível cancelar a visita. Verifique suas permissões e tente novamente.");
             }
         }
     };
