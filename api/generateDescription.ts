@@ -1,5 +1,4 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import type { Property } from '../types';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -14,7 +13,7 @@ export default async function handler(req, res) {
     }
     
     // A chave de API é lida das variáveis de ambiente do servidor, com segurança.
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
     const propertyDescriptionSchema = {
       type: Type.OBJECT,
@@ -35,11 +34,11 @@ export default async function handler(req, res) {
         - Título: ${propertyDetails.title}
         - Tipo: ${propertyDetails.type}
         - Bairro: ${propertyDetails.location.bairro}, ${propertyDetails.location.cidade}
-        - Preço: R$ ${propertyDetails.price.toLocaleString('pt-BR')}
+        - Preço: R$ ${Number(propertyDetails.price).toLocaleString('pt-BR')}
         - Área: ${propertyDetails.area} m²
         - Quartos: ${propertyDetails.bedrooms}
         - Banheiros: ${propertyDetails.bathrooms}
-        - Vagas de Garagem: ${propertyDetails.garageSpaces}
+        - Vagas de Garagem: ${propertyDetails.garage_spaces}
 
         Retorne um objeto JSON com uma chave "description" contendo o texto gerado.
     `;

@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import type { Lead, Property } from '../types';
+import { createClient } from '@supabase/supabase-js'
+import type { Lead } from '../types';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -8,13 +9,27 @@ export default async function handler(req, res) {
   }
   
   try {
-    const { lead, properties } = req.body;
+    const { lead } = req.body;
 
-    if (!lead || !properties) {
-        return res.status(400).json({ error: 'Lead ou propriedades não fornecidos.' });
+    if (!lead) {
+        return res.status(400).json({ error: 'Lead não fornecido.' });
     }
+    
+    // Inicializa o cliente Supabase com a chave de serviço para acesso de administrador no backend.
+    const supabaseAdmin = createClient(
+      process.env.SUPABASE_URL || '',
+      process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+    );
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // Busca as propriedades disponíveis diretamente do banco de dados.
+    const { data: properties, error: dbError } = await supabaseAdmin
+        .from('properties')
+        .select('id, title, type, location, price, area, bedrooms')
+        .eq('status', 'Disponível');
+
+    if (dbError) throw dbError;
+
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     
     const propertySuggestionSchema = {
         type: Type.OBJECT,
@@ -28,16 +43,17 @@ export default async function handler(req, res) {
         required: ['suggestions']
     };
 
-    const relevantProperties = properties.filter(p => p.status === 'Disponível');
     const prompt = `
         Analise o seguinte perfil de cliente e a lista de imóveis disponíveis.
         Perfil do Cliente:
         - Interesses de tipo de imóvel: ${lead.interest.type.join(', ')}
         - Bairros de interesse: ${lead.interest.bairro.join(', ')}
         - Faixa de preço: R$${lead.interest.priceRange[0].toLocaleString('pt-BR')} a R$${lead.interest.priceRange[1].toLocaleString('pt-BR')}
+        
         Imóveis Disponíveis (JSON):
-        ${JSON.stringify(relevantProperties.map(p => ({id: p.id, title: p.title, type: p.type, location: p.location, price: p.price, area: p.area, bedrooms: p.bedrooms})))}
-        Com base na análise, retorne um objeto JSON com uma chave "suggestions" contendo um array com os IDs dos 3 imóveis que melhor correspondem aos interesses do cliente, em ordem de relevância.
+        ${JSON.stringify(properties)}
+
+        Com base na análise, retorne um objeto JSON com uma chave "suggestions" contendo um array com os IDs dos 3 imóveis que melhor correspondem aos interesses do cliente, em ordem de relevância. Se nenhum for compatível, retorne um array vazio.
     `;
 
     const response = await ai.models.generateContent({
@@ -55,7 +71,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ suggestions: parsedJson.suggestions || [] });
 
   } catch (error) {
-    console.error("Error calling Gemini API for property suggestions:", error);
+    console.error("Error calling API for property suggestions:", error);
     return res.status(500).json({ error: "Erro ao buscar sugestões da IA." });
   }
 }

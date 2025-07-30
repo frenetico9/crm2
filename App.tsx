@@ -1,3 +1,7 @@
+
+
+
+
 import React, { useState, useMemo, useEffect, useCallback, createContext, useContext, useRef } from 'react';
 import { Routes, Route, Link, useParams, useNavigate, useLocation, Navigate, useSearchParams } from 'react-router-dom';
 import {
@@ -11,14 +15,17 @@ import {
     isSameDay,
     isYesterday,
     isThisYear,
-    parseISO,
     formatDistanceToNow,
-} from 'date-fns';
+    startOfWeek,
+} from 'https://esm.sh/date-fns@^3.6.0';
 import { ptBR } from 'https://esm.sh/date-fns@^3.6.0/locale/pt-BR';
-import { initialAgents, initialProperties, initialLeads, initialInteractions, initialVisits, initialNotifications } from './data';
-import type { Lead, Property, Agent, Interaction, Visit, WhatsappMessage, Notification } from './types';
+import type { Lead, Property, Agent, Visit, WhatsappMessage, Notification } from './types';
 import { LeadStatus, PropertyStatus, PropertyType } from './types';
 import { getPropertySuggestions, getPropertyDescription, getWhatsappSuggestion } from './geminiService';
+import { createSupabaseClient } from './supabaseClient';
+import type { Session, User, SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from './supabaseClient';
+
 
 // ICONS
 const HomeIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>);
@@ -52,170 +59,92 @@ const ListIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns
 const LayoutGridIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/></svg>;
 
 
-// --- DATA PERSISTENCE & STATE MANAGEMENT ---
-const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] => {
-    const [storedValue, setStoredValue] = useState<T>(() => {
-        try {
-            const item = window.localStorage.getItem(key);
-            return item ? JSON.parse(item, (k, v) => (k === 'start' || k === 'end') && typeof v === 'string' ? parseISO(v) : v) : initialValue;
-        } catch (error) {
-            console.error(error);
-            return initialValue;
-        }
-    });
-
-    const setValue: React.Dispatch<React.SetStateAction<T>> = (value) => {
-        try {
-            const valueToStore = value instanceof Function ? value(storedValue) : value;
-            setStoredValue(valueToStore);
-            window.localStorage.setItem(key, JSON.stringify(valueToStore));
-        } catch (error) {
-            console.error(error);
-        }
-    };
-    return [storedValue, setValue];
-};
-
-interface DataContextType {
-    agents: Agent[];
-    leads: Lead[];
-    properties: Property[];
-    visits: Visit[];
-    notifications: Notification[];
-    interactions: Interaction[];
-    updateLead: (updatedLead: Lead) => void;
-    addLead: (newLead: Lead) => void;
-    updateProperty: (updatedProperty: Property) => void;
-    addProperty: (newProperty: Property) => void;
-    addVisit: (newVisit: Omit<Visit, 'id'>) => void;
-    setNotifications: React.Dispatch<React.SetStateAction<Notification[]>>;
-    updateLeadStatus: (leadId: string, newStatus: LeadStatus) => void;
-    updateWhatsappHistory: (leadId: string, message: WhatsappMessage) => void;
-}
-const DataContext = createContext<DataContextType | null>(null);
-
-export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [agents] = useState<Agent[]>(initialAgents);
-    const [leads, setLeads] = useLocalStorage<Lead[]>('crm_leads', initialLeads);
-    const [properties, setProperties] = useLocalStorage<Property[]>('crm_properties', initialProperties);
-    const [visits, setVisits] = useLocalStorage<Visit[]>('crm_visits', initialVisits);
-    const [notifications, setNotifications] = useLocalStorage<Notification[]>('crm_notifications', initialNotifications);
-    const [interactions] = useState<Interaction[]>(initialInteractions);
-
-    const updateLead = (updatedLead: Lead) => {
-        setLeads(prev => prev.map(l => l.id === updatedLead.id ? updatedLead : l));
-    };
-
-    const addLead = (newLead: Lead) => {
-        setLeads(prev => [newLead, ...prev]);
-    };
-    
-    const updateLeadStatus = (leadId: string, newStatus: LeadStatus) => {
-        setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: newStatus } : l));
-    };
-
-    const updateProperty = (updatedProperty: Property) => {
-        setProperties(prev => prev.map(p => p.id === updatedProperty.id ? updatedProperty : p));
-    };
-
-    const addProperty = (newProperty: Property) => {
-        setProperties(prev => [newProperty, ...prev]);
-    };
-
-    const addVisit = (newVisit: Omit<Visit, 'id'>) => {
-        const visitWithId: Visit = { ...newVisit, id: `visit-${Date.now()}` };
-        setVisits(prev => [...prev, visitWithId]);
-    };
-
-    const updateWhatsappHistory = (leadId: string, message: WhatsappMessage) => {
-        setLeads(prev => prev.map(lead => {
-            if (lead.id === leadId) {
-                return { ...lead, whatsappHistory: [...(lead.whatsappHistory || []), message] };
-            }
-            return lead;
-        }));
-    };
-
-
-    const value = {
-        agents, leads, properties, visits, notifications, interactions,
-        updateLead, addLead, updateProperty, addProperty, addVisit, setNotifications,
-        updateLeadStatus, updateWhatsappHistory
-    };
-
-    return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
-};
-
-const useData = () => {
-    const context = useContext(DataContext);
-    if (!context) throw new Error('useData must be used within a DataProvider');
-    return context;
-};
-
 // --- AUTHENTICATION ---
 interface AuthContextType {
-    currentUser: Agent | null;
-    agents: Agent[];
+    session: Session | null;
+    profile: Agent | null;
     loading: boolean;
-    login: (email: string, password: string) => Promise<void>;
     logout: () => void;
-    register: (name: string, email: string, password: string) => Promise<void>;
-    updateCurrentUser: (updatedData: Partial<Agent>) => Promise<void>;
+    client: SupabaseClient<Database> | null;
 }
 const AuthContext = createContext<AuthContextType | null>(null);
 
 const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [currentUser, setCurrentUser] = useLocalStorage<Agent | null>('crm_currentUser', null);
-    const [agents, setAgents] = useLocalStorage<Agent[]>('crm_agents', initialAgents);
+    const [session, setSession] = useState<Session | null>(null);
+    const [profile, setProfile] = useState<Agent | null>(null);
+    const [client, setClient] = useState<SupabaseClient<Database> | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        setLoading(false);
-    }, [currentUser]);
+        const initialize = async () => {
+            setLoading(true);
+            const supabaseClient = await createSupabaseClient();
+            if (!supabaseClient) {
+                 console.error("Falha crítica: Cliente Supabase não pôde ser criado.");
+                 setLoading(false);
+                 return;
+            }
+            setClient(supabaseClient);
 
-    const login = async (email: string, password: string) => {
-        const agent = agents.find(a => a.email === email && a.password === password);
-        if (agent) {
-            setCurrentUser(agent);
-        } else {
-            throw new Error('Credenciais inválidas');
-        }
-    };
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            setSession(session);
+             if (session?.user) {
+                const { data: agentProfile } = await supabaseClient
+                    .from('agents')
+                    .select('*')
+                    .eq('id', session.user.id)
+                    .single();
+                setProfile(agentProfile as Agent | null);
+            }
+            setLoading(false);
 
-    const register = async (name: string, email: string, password: string) => {
-        if (agents.some(a => a.email === email)) {
-            throw new Error('Email já cadastrado');
-        }
-        const newAgent: Agent = {
-            id: `agent-${Date.now()}`,
-            name,
-            email,
-            password,
-            avatarUrl: `https://i.pravatar.cc/150?u=${email}`,
-            phone: ''
+            const { data: { subscription } } = supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+                setSession(session);
+                 if (session?.user) {
+                    setLoading(true);
+                    const { data: agentProfile } = await supabaseClient
+                        .from('agents')
+                        .select('*')
+                        .eq('id', session.user.id)
+                        .single();
+                    setProfile(agentProfile as Agent | null);
+                    setLoading(false);
+                } else {
+                    setProfile(null);
+                }
+            });
+
+            return () => subscription.unsubscribe();
         };
-        setAgents(prev => [...prev, newAgent]);
-        setCurrentUser(newAgent);
-    };
+        
+        const unsubscribePromise = initialize();
+        
+        return () => {
+            unsubscribePromise.then(unsubscribe => unsubscribe && unsubscribe());
+        }
+    }, []);
 
-    const logout = () => {
-        setCurrentUser(null);
+    const logout = async () => {
+        if(client) {
+            await client.auth.signOut();
+        }
     };
     
-    const updateCurrentUser = async (updatedData: Partial<Agent>) => {
-        if (!currentUser) return;
-        const updatedAgent = { ...currentUser, ...updatedData };
-        setAgents(prevAgents => prevAgents.map(agent => agent.id === currentUser.id ? updatedAgent : agent ));
-        setCurrentUser(updatedAgent);
-    };
+    if (loading) {
+        return <div className="flex justify-center items-center h-screen bg-brand-secondary text-brand-text">Conectando...</div>;
+    }
 
-
-    const value = { currentUser, agents, loading, login, logout, register, updateCurrentUser };
+    if (!client) {
+        return <div className="flex justify-center items-center h-screen bg-red-100 text-red-700">Erro: Não foi possível conectar ao servidor. Verifique a configuração e a conexão.</div>;
+    }
+    
+    const value = { session, profile, loading, logout, client };
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 const useAuth = () => {
     const context = useContext(AuthContext);
     if (!context) throw new Error('useAuth must be used within an AuthProvider');
+    if (!context.client) throw new Error('Supabase client not available. This should not happen.');
     return context;
 };
 
@@ -242,22 +171,35 @@ const GlobalSearch: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [results, setResults] = useState<{ leads: Lead[], properties: Property[] }>({ leads: [], properties: [] });
     const [isOpen, setIsOpen] = useState(false);
-    const { leads, properties } = useData();
-    const navigate = useNavigate();
     const searchRef = useRef<HTMLDivElement>(null);
+    const navigate = useNavigate();
+    const { profile, client } = useAuth();
+
 
     useClickOutside(searchRef, () => setIsOpen(false));
 
     useEffect(() => {
-        if (searchTerm.length > 1) {
-            const filteredLeads = leads.filter(l => l.name.toLowerCase().includes(searchTerm.toLowerCase()));
-            const filteredProperties = properties.filter(p => p.title.toLowerCase().includes(searchTerm.toLowerCase()));
-            setResults({ leads: filteredLeads, properties: filteredProperties });
-            setIsOpen(true);
-        } else {
-            setIsOpen(false);
-        }
-    }, [searchTerm, leads, properties]);
+        const performSearch = async () => {
+            if (searchTerm.length > 1 && profile) {
+                const [leadsRes, propertiesRes] = await Promise.all([
+                    client.from('leads').select('*').eq('agent_id', profile.id).ilike('name', `%${searchTerm}%`),
+                    client.from('properties').select('*').ilike('title', `%${searchTerm}%`)
+                ]);
+                
+                setResults({ leads: (leadsRes.data as Lead[]) || [], properties: (propertiesRes.data as Property[]) || [] });
+                setIsOpen(true);
+            } else {
+                setIsOpen(false);
+            }
+        };
+
+        const debounce = setTimeout(() => {
+            performSearch();
+        }, 300);
+
+        return () => clearTimeout(debounce);
+
+    }, [searchTerm, profile, client]);
     
     const handleSelect = (path: string) => {
         setSearchTerm('');
@@ -307,18 +249,56 @@ const GlobalSearch: React.FC = () => {
 };
 
 const NotificationsPanel: React.FC = () => {
-    const { notifications, setNotifications } = useData();
+    const { profile, client } = useAuth();
+    const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const navigate = useNavigate();
     const panelRef = useRef<HTMLDivElement>(null);
 
     useClickOutside(panelRef, () => setIsOpen(false));
+    
+    useEffect(() => {
+        if (!profile) return;
+        
+        const fetchNotifications = async () => {
+            const { data } = await client
+                .from('notifications')
+                .select('*')
+                .eq('user_id', profile.id)
+                .order('timestamp', { ascending: false });
+            setNotifications(data || []);
+        };
+
+        fetchNotifications();
+        
+        const channel = client.channel('notifications')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${profile.id}` }, (payload) => {
+                setNotifications(current => [payload.new as Notification, ...current]);
+            })
+            .subscribe();
+            
+        return () => {
+            client.removeChannel(channel);
+        };
+
+    }, [profile, client]);
+
 
     const unreadCount = notifications.filter(n => !n.read).length;
 
-    const handleNotificationClick = (notification: Notification) => {
+    const handleNotificationClick = async (notification: Notification) => {
         if (notification.link) navigate(notification.link);
-        setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, read: true } : n));
+        if (!notification.read) {
+            const { data } = await client
+                .from('notifications')
+                .update({ read: true })
+                .eq('id', notification.id)
+                .select()
+                .single();
+            if(data) {
+                setNotifications(prev => prev.map(n => n.id === notification.id ? (data as Notification) : n));
+            }
+        }
         setIsOpen(false);
     };
 
@@ -338,7 +318,7 @@ const NotificationsPanel: React.FC = () => {
                             <li key={n.id} onClick={() => handleNotificationClick(n)} className={`p-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${!n.read ? 'bg-blue-50' : ''}`}>
                                 <p className="font-semibold">{n.title}</p>
                                 <p className="text-sm text-gray-600">{n.content}</p>
-                                <p className="text-xs text-gray-400 mt-1">{formatDistanceToNow(parseISO(n.timestamp), { addSuffix: true, locale: ptBR })}</p>
+                                <p className="text-xs text-gray-400 mt-1">{formatDistanceToNow(new Date(n.timestamp), { addSuffix: true, locale: ptBR })}</p>
                             </li>
                         )) : (
                             <li className="p-4 text-center text-gray-500">Nenhuma notificação.</li>
@@ -354,21 +334,11 @@ const NotificationsPanel: React.FC = () => {
 const Header = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const { currentUser, logout } = useAuth();
+    const { profile, logout } = useAuth();
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-                setIsProfileMenuOpen(false);
-            }
-        };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
-    }, []);
+    useClickOutside(menuRef, () => setIsProfileMenuOpen(false));
     
     const handleLogout = () => {
         logout();
@@ -383,11 +353,11 @@ const Header = () => {
         { path: '/whatsapp', label: 'WhatsApp', icon: MessageCircleIcon },
     ];
 
-    const NavLinkItem: React.FC<{ path: string, label: string, icon: React.FC<any> }> = ({ path, label, icon: Icon }) => (
+    const NavLinkItem: React.FC<{ path: string, label: string, icon: React.FC<React.SVGProps<SVGSVGElement>> }> = ({ path, label, icon: Icon }) => (
         <Link
             to={path}
             className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                location.pathname.startsWith(path === '/' ? '/#' : path)
+                location.pathname === path || (path !== '/' && location.pathname.startsWith(path))
                     ? 'bg-brand-accent text-white'
                     : 'text-gray-300 hover:bg-blue-700 hover:text-white'
             }`}
@@ -397,11 +367,11 @@ const Header = () => {
         </Link>
     );
 
-    const BottomNavItem: React.FC<{ path: string, label: string, icon: React.FC<any> }> = ({ path, label, icon: Icon }) => (
+    const BottomNavItem: React.FC<{ path: string, label: string, icon: React.FC<React.SVGProps<SVGSVGElement>> }> = ({ path, label, icon: Icon }) => (
         <Link
             to={path}
             className={`flex flex-col items-center justify-center w-full pt-2 pb-1 transition-colors ${
-                location.pathname.startsWith(path === '/' ? '/#' : path) ? 'text-brand-primary' : 'text-gray-500'
+                location.pathname === path || (path !== '/' && location.pathname.startsWith(path)) ? 'text-brand-primary' : 'text-gray-500'
             }`}
         >
             <Icon className="h-6 w-6 mb-1" />
@@ -424,11 +394,11 @@ const Header = () => {
                     <nav className="flex items-center space-x-1 flex-shrink-0">
                         {navLinks.map(link => <NavLinkItem key={link.path} {...link} />)}
                          <NotificationsPanel />
-                        {currentUser && (
+                        {profile && (
                              <div className="relative" ref={menuRef}>
                                 <button onClick={() => setIsProfileMenuOpen(p => !p)} className="flex items-center gap-2 ml-2 p-1 rounded-md hover:bg-blue-700 transition-colors">
-                                    <img src={currentUser.avatarUrl} alt={currentUser.name} className="h-9 w-9 rounded-full border-2 border-brand-accent" />
-                                     <span className="text-white font-medium hidden lg:inline">{currentUser.name.split(' ')[0]}</span>
+                                    <img src={profile.avatar_url} alt={profile.name} className="h-9 w-9 rounded-full border-2 border-brand-accent object-cover" />
+                                     <span className="text-white font-medium hidden lg:inline">{profile.name.split(' ')[0]}</span>
                                      <ChevronDownIcon className={`h-5 w-5 text-white hidden lg:inline transition-transform ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
                                 </button>
                                 {isProfileMenuOpen && (
@@ -487,9 +457,8 @@ const StatusPill: React.FC<{ status: LeadStatus | PropertyStatus }> = ({ status 
     };
     return <span className={`px-2.5 py-0.5 text-xs font-medium rounded-full ${colorMap[status]}`}>{status}</span>;
 };
-const LeadCard: React.FC<{ lead: Lead; isDragging?: boolean; draggableProps?: any; }> = ({ lead, isDragging, draggableProps }) => {
-    const { agents } = useAuth();
-    const agent = agents.find(a => a.id === lead.agentId);
+
+const LeadCard: React.FC<{ lead: Lead; isDragging?: boolean; draggableProps?: any; agent?: Agent }> = ({ lead, isDragging, draggableProps, agent }) => {
     const navigate = useNavigate();
     return (
         <div 
@@ -509,11 +478,11 @@ const LeadCard: React.FC<{ lead: Lead; isDragging?: boolean; draggableProps?: an
                     <StarIcon className="h-4 w-4 fill-current"/>
                     <span>{lead.score} Pontos</span>
                 </div>
-                <span>Contato: {format(new Date(lead.lastContact), 'dd/MM/yy', { locale: ptBR })}</span>
+                <span>Contato: {format(new Date(lead.last_contact), 'dd/MM/yy', { locale: ptBR })}</span>
             </div>
             <div className="border-t pt-3 mt-auto flex items-center justify-between">
                  <div className="flex items-center gap-2">
-                    {agent && <img src={agent.avatarUrl} alt={agent.name} className="h-8 w-8 rounded-full" />}
+                    {agent && <img src={agent.avatar_url} alt={agent.name} className="h-8 w-8 rounded-full object-cover" />}
                     <span className="text-sm font-medium text-brand-text">{agent?.name}</span>
                 </div>
                 <button className="text-brand-primary font-semibold text-sm">
@@ -523,6 +492,7 @@ const LeadCard: React.FC<{ lead: Lead; isDragging?: boolean; draggableProps?: an
         </div>
     );
 };
+
 const PropertyCard: React.FC<{ property: Property }> = ({ property }) => {
     const navigate = useNavigate();
     const formatPrice = (price: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
@@ -544,7 +514,7 @@ const PropertyCard: React.FC<{ property: Property }> = ({ property }) => {
                     <div className="flex justify-between text-sm text-brand-text-light border-t pt-3">
                         <span>{property.bedrooms} {property.bedrooms !== 1 ? 'quartos' : 'quarto'}</span>
                         <span>{property.bathrooms} {property.bathrooms !== 1 ? 'banheiros' : 'banheiro'}</span>
-                        <span>{property.garageSpaces} {property.garageSpaces !== 1 ? 'vagas' : 'vaga'}</span>
+                        <span>{property.garage_spaces} {property.garage_spaces !== 1 ? 'vagas' : 'vaga'}</span>
                         <span>{property.area} m²</span>
                     </div>
                 </div>
@@ -578,7 +548,7 @@ const AuthLayout: React.FC<{ title: string; children: React.ReactNode }> = ({ ti
 const LoginPage = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { login } = useAuth();
+    const { client } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -589,7 +559,8 @@ const LoginPage = () => {
         e.preventDefault();
         setError('');
         try {
-            await login(email, password);
+            const { error } = await client.auth.signInWithPassword({ email, password });
+            if (error) throw error;
             navigate(from, { replace: true });
         } catch (err: any) {
             setError(err.message || 'Falha no login. Verifique suas credenciais.');
@@ -625,7 +596,7 @@ const LoginPage = () => {
 
 const RegisterPage = () => {
     const navigate = useNavigate();
-    const { register } = useAuth();
+    const { client } = useAuth();
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -635,7 +606,17 @@ const RegisterPage = () => {
         e.preventDefault();
         setError('');
         try {
-            await register(name, email, password);
+            const { error } = await client.auth.signUp({
+                email,
+                password,
+                options: {
+                    data: {
+                        name: name,
+                        avatar_url: `https://i.pravatar.cc/150?u=${email}`,
+                    }
+                }
+            });
+            if (error) throw error;
             navigate('/');
         } catch (err: any) {
             setError(err.message || 'Não foi possível realizar o cadastro.');
@@ -671,18 +652,31 @@ const RegisterPage = () => {
 };
 
 const ForgotPasswordPage = () => {
+    const { client } = useAuth();
     const [email, setEmail] = useState('');
     const [message, setMessage] = useState('');
+    const [error, setError] = useState('');
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setMessage(`Se um usuário com o email ${email} existir, um link de redefinição de senha foi enviado.`);
+        setMessage('');
+        setError('');
+        try {
+            const { error } = await client.auth.resetPasswordForEmail(email, {
+                redirectTo: window.location.origin,
+            });
+            if (error) throw error;
+            setMessage(`Se um usuário com o email ${email} existir, um link de redefinição de senha foi enviado.`);
+        } catch(err: any) {
+            setError(err.message);
+        }
     };
 
     return (
         <AuthLayout title="Recuperar Senha">
             <form onSubmit={handleSubmit} className="space-y-6">
                 {message && <p className="bg-green-100 text-green-700 p-3 rounded-md text-sm">{message}</p>}
+                 {error && <p className="bg-red-100 text-red-700 p-3 rounded-md text-sm">{error}</p>}
                 <div>
                     <label htmlFor="email_forgot" className="block text-sm font-medium text-brand-text-light">Email</label>
                     <input type="email" id="email_forgot" value={email} onChange={e => setEmail(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand-primary focus:border-brand-primary" />
@@ -702,33 +696,44 @@ const ForgotPasswordPage = () => {
 // --- PAGES & MAIN LOGIC ---
 
 const ProfilePage = () => {
-    const { currentUser, updateCurrentUser } = useAuth();
-    const [name, setName] = useState(currentUser?.name || '');
-    const [phone, setPhone] = useState(currentUser?.phone || '');
-    const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatarUrl || '');
+    const { profile, session, client } = useAuth();
+    const [name, setName] = useState(profile?.name || '');
+    const [phone, setPhone] = useState(profile?.phone || '');
+    const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || '');
     const [message, setMessage] = useState('');
 
     useEffect(() => {
-        if(currentUser) {
-            setName(currentUser.name);
-            setPhone(currentUser.phone || '');
-            setAvatarUrl(currentUser.avatarUrl);
+        if(profile) {
+            setName(profile.name);
+            setPhone(profile.phone || '');
+            setAvatarUrl(profile.avatar_url);
         }
-    }, [currentUser]);
+    }, [profile]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setMessage('');
+        if (!session?.user) {
+            setMessage('Usuário não autenticado.');
+            return;
+        }
+
         try {
-            await updateCurrentUser({ name, phone, avatarUrl });
+            const { error } = await client
+                .from('agents')
+                .update({ name, phone, avatar_url: avatarUrl })
+                .eq('id', session.user.id);
+            
+            if(error) throw error;
+
             setMessage('Perfil atualizado com sucesso!');
             setTimeout(() => setMessage(''), 3000);
-        } catch (error) {
-            setMessage('Falha ao atualizar o perfil.');
+        } catch (error: any) {
+            setMessage('Falha ao atualizar o perfil: ' + error.message);
         }
     };
 
-    if (!currentUser) return null;
+    if (!profile) return null;
 
     return (
         <PageContainer title="Meu Perfil" showBackButton>
@@ -748,7 +753,7 @@ const ProfilePage = () => {
                     </div>
                     <div>
                         <label htmlFor="email" className="block text-sm font-medium text-brand-text-light">Email</label>
-                        <input type="email" id="email" value={currentUser.email} readOnly className="mt-1 block w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
+                        <input type="email" id="email" value={profile.email} readOnly className="mt-1 block w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md shadow-sm sm:text-sm" />
                     </div>
                     <div>
                         <label htmlFor="phone" className="block text-sm font-medium text-brand-text-light">Telefone</label>
@@ -765,8 +770,8 @@ const ProfilePage = () => {
     );
 };
 
-const LeadsKanbanView: React.FC<{ leads: Lead[] }> = ({ leads }) => {
-    const { updateLeadStatus } = useData();
+const LeadsKanbanView: React.FC<{ leads: Lead[], agents: Agent[] }> = ({ leads, agents }) => {
+    const { client } = useAuth();
     const [draggingLeadId, setDraggingLeadId] = useState<string | null>(null);
 
     const handleDragStart = (e: React.DragEvent<HTMLDivElement>, leadId: string) => {
@@ -778,9 +783,18 @@ const LeadsKanbanView: React.FC<{ leads: Lead[] }> = ({ leads }) => {
         e.preventDefault();
     };
 
-    const handleDrop = (e: React.DragEvent<HTMLDivElement>, status: LeadStatus) => {
+    const handleDrop = async (e: React.DragEvent<HTMLDivElement>, status: LeadStatus) => {
         const leadId = e.dataTransfer.getData('leadId');
-        updateLeadStatus(leadId, status);
+        // Optimistic update can be added here
+        const { error } = await client
+            .from('leads')
+            .update({ status: status })
+            .eq('id', leadId);
+
+        if (error) {
+            console.error("Failed to update lead status", error);
+            // Revert optimistic update if it failed
+        }
         setDraggingLeadId(null);
     };
     
@@ -813,6 +827,7 @@ const LeadsKanbanView: React.FC<{ leads: Lead[] }> = ({ leads }) => {
                             <LeadCard 
                                 key={lead.id} 
                                 lead={lead}
+                                agent={agents.find(a => a.id === lead.agent_id)}
                                 isDragging={draggingLeadId === lead.id}
                                 draggableProps={{
                                     draggable: true,
@@ -830,8 +845,11 @@ const LeadsKanbanView: React.FC<{ leads: Lead[] }> = ({ leads }) => {
 
 const LeadsListPage = () => {
     const navigate = useNavigate();
-    const [searchParams, setSearchParams] = useSearchParams();
-    const { leads } = useData();
+    const { profile, client } = useAuth();
+    const [searchParams] = useSearchParams();
+    const [leads, setLeads] = useState<Lead[]>([]);
+    const [agents, setAgents] = useState<Agent[]>([]);
+    const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
     const [activeFilter, setActiveFilter] = useState<LeadStatus | 'Todos'>(searchParams.get('status') as LeadStatus || 'Todos');
@@ -843,11 +861,37 @@ const LeadsListPage = () => {
         }
     }, [searchParams]);
 
-    const filteredLeads = useMemo(() => {
-        return leads
-            .filter(lead => activeFilter === 'Todos' || lead.status === activeFilter)
-            .filter(lead => lead.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [leads, searchTerm, activeFilter]);
+    useEffect(() => {
+        const fetchLeadsAndAgents = async () => {
+            if (!profile) return;
+            setLoading(true);
+            const { data: agentsData } = await client.from('agents').select('*');
+            setAgents(agentsData || []);
+
+            let query = client.from('leads').select('*').eq('agent_id', profile.id);
+            if (activeFilter !== 'Todos') {
+                query = query.eq('status', activeFilter);
+            }
+            if(searchTerm) {
+                query = query.ilike('name', `%${searchTerm}%`);
+            }
+            const { data: leadsData } = await query.order('created_at', { ascending: false });
+            setLeads(leadsData || []);
+            setLoading(false);
+        };
+        
+        fetchLeadsAndAgents();
+        
+        const channel = client.channel('leads-page-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, fetchLeadsAndAgents)
+            .subscribe();
+            
+        return () => {
+            client.removeChannel(channel);
+        }
+
+    }, [profile, activeFilter, searchTerm, client]);
+
 
     const filters: (LeadStatus | 'Todos')[] = ['Todos', LeadStatus.Novo, LeadStatus.EmNegociacao, LeadStatus.Visitou, LeadStatus.Fechado, LeadStatus.Perdido];
 
@@ -890,50 +934,55 @@ const LeadsListPage = () => {
                     />
                 </div>
             </div>
-
-            {viewMode === 'list' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredLeads.map(lead => (
-                        <LeadCard key={lead.id} lead={lead} />
-                    ))}
-                </div>
-            ) : (
-                <LeadsKanbanView leads={filteredLeads} />
+            
+            {loading ? <p>Carregando leads...</p> : (
+                viewMode === 'list' ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {leads.map(lead => (
+                            <LeadCard key={lead.id} lead={lead} agent={agents.find(a => a.id === lead.agent_id)} />
+                        ))}
+                    </div>
+                ) : (
+                    <LeadsKanbanView leads={leads} agents={agents} />
+                )
             )}
-
         </PageContainer>
     );
 };
 
 const NewLeadPage = () => {
     const navigate = useNavigate();
-    const { agents } = useData();
-    const { currentUser } = useAuth();
-    const { addLead } = useData();
+    const { profile, client } = useAuth();
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
-    const [agentId, setAgentId] = useState(currentUser?.id || agents[0]?.id || '');
-
-    const handleSubmit = (e: React.FormEvent) => {
+    
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const newLead: Lead = {
-            id: `lead-${Date.now()}`,
+        if (!profile) return;
+        
+        const newLeadData: Omit<Lead, 'id' | 'created_at'> = {
             name,
             email,
             phone,
-            agentId,
+            agent_id: profile.id,
             status: LeadStatus.Novo,
             score: Math.floor(Math.random() * 30) + 50,
-            lastContact: new Date().toISOString().split('T')[0],
+            last_contact: new Date().toISOString(),
             interest: {
                 type: [],
                 bairro: [],
                 priceRange: [0, 0],
             },
         };
-        addLead(newLead);
-        navigate('/leads');
+
+        const { error } = await client.from('leads').insert(newLeadData);
+
+        if (error) {
+            alert("Erro ao criar lead: " + error.message);
+        } else {
+            navigate('/leads');
+        }
     };
 
     return (
@@ -952,15 +1001,6 @@ const NewLeadPage = () => {
                         <label htmlFor="phone" className="block text-sm font-medium text-brand-text-light">Telefone</label>
                         <input type="tel" id="phone" value={phone} onChange={e => setPhone(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm" />
                     </div>
-                    <div>
-                        <label htmlFor="agent" className="block text-sm font-medium text-brand-text-light">Corretor Responsável</label>
-                        <select id="agent" value={agentId} onChange={e => setAgentId(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm">
-                            <option value="" disabled>Selecione um corretor</option>
-                            {agents.map(agent => (
-                                <option key={agent.id} value={agent.id}>{agent.name}</option>
-                            ))}
-                        </select>
-                    </div>
                     <div className="flex justify-end gap-4 pt-4 border-t">
                         <button type="button" onClick={() => navigate('/leads')} className="px-6 py-2 text-sm font-medium text-brand-text bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors">
                             Cancelar
@@ -976,8 +1016,9 @@ const NewLeadPage = () => {
 };
 
 const AISuggestions: React.FC<{ lead: Lead }> = ({ lead }) => {
-    const { properties } = useData();
+    const { client } = useAuth();
     const [suggestedIds, setSuggestedIds] = useState<string[]>([]);
+    const [suggestedProperties, setSuggestedProperties] = useState<Property[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
@@ -986,22 +1027,43 @@ const AISuggestions: React.FC<{ lead: Lead }> = ({ lead }) => {
             setLoading(true);
             setError('');
             try {
-                const ids = await getPropertySuggestions(lead, properties);
+                // The API route will now fetch properties itself
+                const ids = await getPropertySuggestions(lead);
                 setSuggestedIds(ids);
             } catch (err) {
                 setError('Falha ao buscar sugestões da IA.');
                 console.error(err);
-            } finally {
-                setLoading(false);
             }
         };
 
         fetchSuggestions();
-    }, [lead, properties]);
+    }, [lead]);
 
-    const suggestedProperties = useMemo(() => {
-        return properties.filter(p => suggestedIds.includes(p.id));
-    }, [suggestedIds, properties]);
+    useEffect(() => {
+        if (suggestedIds.length === 0) {
+            setLoading(false);
+            return;
+        }
+
+        const fetchProperties = async () => {
+            const { data, error } = await client
+                .from('properties')
+                .select('*')
+                .in('id', suggestedIds);
+            
+            if (error) {
+                setError('Falha ao carregar detalhes das propriedades sugeridas.');
+            } else {
+                // Keep the order from AI
+                const orderedProperties = suggestedIds.map(id => data.find(p => p.id === id)).filter(Boolean) as Property[];
+                setSuggestedProperties(orderedProperties);
+            }
+            setLoading(false);
+        }
+        fetchProperties();
+
+    }, [suggestedIds, client]);
+
 
     return (
         <div className="bg-white p-6 rounded-lg shadow-md h-full">
@@ -1084,12 +1146,36 @@ const AIWhatsappSuggester: React.FC<{ lead: Lead }> = ({ lead }) => {
 
 const LeadDetailPage = () => {
     const { id } = useParams<{ id: string }>();
-    const { leads, agents, interactions } = useData();
-    const lead = leads.find(l => l.id === id);
-    const agent = agents.find(a => a.id === lead?.agentId);
+    const { client } = useAuth();
+    const [lead, setLead] = useState<Lead | null>(null);
+    const [agent, setAgent] = useState<Agent | null>(null);
+
+    useEffect(() => {
+        const fetchLeadDetails = async () => {
+            if (!id) return;
+            const { data: leadData, error } = await client
+                .from('leads')
+                .select('*')
+                .eq('id', id)
+                .single();
+            
+            if (error) {
+                console.error("Error fetching lead", error);
+            } else if (leadData) {
+                setLead(leadData);
+                const { data: agentData } = await client
+                    .from('agents')
+                    .select('*')
+                    .eq('id', leadData.agent_id)
+                    .single();
+                setAgent(agentData);
+            }
+        };
+        fetchLeadDetails();
+    }, [id, client]);
     
     if (!lead) {
-        return <PageContainer title="Lead não encontrado" showBackButton>Lead não encontrado.</PageContainer>;
+        return <PageContainer title="Carregando..." showBackButton>Carregando dados do lead...</PageContainer>;
     }
 
     const formatPrice = (price: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
@@ -1144,15 +1230,28 @@ const LeadDetailPage = () => {
 
 const PropertiesListPage = () => {
     const navigate = useNavigate();
-    const { properties } = useData();
+    const { client } = useAuth();
+    const [properties, setProperties] = useState<Property[]>([]);
+    const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [activeFilter, setActiveFilter] = useState<PropertyStatus | 'Todos'>('Todos');
 
-    const filteredProperties = useMemo(() => {
-        return properties
-            .filter(p => activeFilter === 'Todos' || p.status === activeFilter)
-            .filter(p => p.title.toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [properties, searchTerm, activeFilter]);
+    useEffect(() => {
+        const fetchProperties = async () => {
+            setLoading(true);
+            let query = client.from('properties').select('*');
+            if(activeFilter !== 'Todos') {
+                query = query.eq('status', activeFilter);
+            }
+             if(searchTerm) {
+                query = query.ilike('title', `%${searchTerm}%`);
+            }
+            const { data, error } = await query.order('created_at', { ascending: false });
+            if(data) setProperties(data);
+            setLoading(false);
+        };
+        fetchProperties();
+    }, [searchTerm, activeFilter, client]);
 
     const filters: (PropertyStatus | 'Todos')[] = ['Todos', PropertyStatus.Disponivel, PropertyStatus.EmNegociacao, PropertyStatus.Vendido];
 
@@ -1189,22 +1288,54 @@ const PropertiesListPage = () => {
                     />
                 </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredProperties.map(property => (
-                    <PropertyCard key={property.id} property={property} />
-                ))}
-            </div>
+            {loading ? <p>Carregando imóveis...</p> : (
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {properties.map(property => (
+                        <PropertyCard key={property.id} property={property} />
+                    ))}
+                </div>
+            )}
         </PageContainer>
     );
 };
 
 // ... (Other page components like WhatsappPage, DashboardPage etc will be added here)
 const WhatsappPage = () => {
-    const { leads, updateWhatsappHistory, agents: allAgents } = useData();
+    const { profile, client } = useAuth();
+    const [leads, setLeads] = useState<Lead[]>([]);
+    const [agents, setAgents] = useState<Agent[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
     const [newMessage, setNewMessage] = useState('');
     const chatContainerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!profile) return;
+        
+        const fetchData = async () => {
+            const { data: agentsData } = await client.from('agents').select('*');
+            setAgents(agentsData || []);
+            
+            const { data: leadsData } = await client
+                .from('leads')
+                .select('*')
+                .eq('agent_id', profile.id)
+                .order('last_contact', { ascending: false });
+            setLeads(leadsData || []);
+        };
+        
+        fetchData();
+
+        const channel = client.channel('whatsapp-leads-channel')
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'leads', filter: `agent_id=eq.${profile.id}` }, (payload) => {
+                 setLeads(currentLeads => currentLeads.map(l => l.id === payload.new.id ? payload.new as Lead : l));
+            })
+            .subscribe();
+
+        return () => {
+            client.removeChannel(channel);
+        };
+    }, [profile, client]);
 
 
     useEffect(() => {
@@ -1217,8 +1348,8 @@ const WhatsappPage = () => {
         return leads
             .filter(lead => lead.name.toLowerCase().includes(searchTerm.toLowerCase()) || lead.phone.includes(searchTerm))
             .sort((a, b) => {
-                const lastMessageA = a.whatsappHistory?.[a.whatsappHistory.length - 1];
-                const lastMessageB = b.whatsappHistory?.[b.whatsappHistory.length - 1];
+                const lastMessageA = a.whatsapp_history?.[a.whatsapp_history.length - 1];
+                const lastMessageB = b.whatsapp_history?.[b.whatsapp_history.length - 1];
                 if (!lastMessageA) return 1;
                 if (!lastMessageB) return -1;
                 return new Date(lastMessageB.timestamp).getTime() - new Date(lastMessageA.timestamp).getTime();
@@ -1237,7 +1368,7 @@ const WhatsappPage = () => {
         window.open(url, '_blank', 'noopener,noreferrer');
     };
 
-    const handleSendMessage = () => {
+    const handleSendMessage = async () => {
         if (!newMessage.trim() || !selectedLead) return;
 
         const newMsg: WhatsappMessage = {
@@ -1248,9 +1379,18 @@ const WhatsappPage = () => {
             timestamp: new Date().toISOString(),
         };
         
-        updateWhatsappHistory(selectedLead.id, newMsg);
-        openWhatsApp(selectedLead, newMessage);
-        setNewMessage('');
+        const updatedHistory = [...(selectedLead.whatsapp_history || []), newMsg];
+        const { error } = await client
+            .from('leads')
+            .update({ whatsapp_history: updatedHistory, last_contact: new Date().toISOString() })
+            .eq('id', selectedLead.id);
+            
+        if(error) {
+            alert('Falha ao enviar mensagem.');
+        } else {
+            openWhatsApp(selectedLead, newMessage);
+            setNewMessage('');
+        }
     };
     
     const formatMessageTimestamp = (timestamp: string) => {
@@ -1291,11 +1431,11 @@ const WhatsappPage = () => {
                     <div className="flex-grow overflow-y-auto">
                         <ul className="divide-y divide-gray-200">
                             {filteredLeads.map(lead => {
-                                const lastMessage = lead.whatsappHistory?.[lead.whatsappHistory.length - 1];
-                                const agent = allAgents.find(a => a.id === lead.agentId);
+                                const lastMessage = lead.whatsapp_history?.[lead.whatsapp_history.length - 1];
+                                const agent = agents.find(a => a.id === lead.agent_id);
                                 return (
                                 <li key={lead.id} onClick={() => setSelectedLeadId(lead.id)} className={`p-3 flex items-center gap-3 cursor-pointer transition-colors ${selectedLeadId === lead.id ? 'bg-brand-secondary' : 'hover:bg-gray-50'}`}>
-                                    <img src={agent?.avatarUrl} alt={lead.name} className="h-12 w-12 rounded-full"/>
+                                    <img src={agent?.avatar_url} alt={lead.name} className="h-12 w-12 rounded-full object-cover"/>
                                     <div className="flex-grow overflow-hidden">
                                         <div className="flex justify-between items-center">
                                             <p className="font-semibold text-brand-text truncate">{lead.name}</p>
@@ -1321,7 +1461,7 @@ const WhatsappPage = () => {
                                             <ChevronLeftIcon className="h-6 w-6 text-brand-text" />
                                         </button>
                                     )}
-                                    <img src={allAgents.find(a => a.id === selectedLead.agentId)?.avatarUrl} alt={selectedLead.name} className="h-10 w-10 rounded-full" />
+                                    <img src={agents.find(a => a.id === selectedLead.agent_id)?.avatar_url} alt={selectedLead.name} className="h-10 w-10 rounded-full object-cover" />
                                     <div>
                                         <p className="font-bold text-brand-text">{selectedLead.name}</p>
                                         <p className="text-xs text-green-500">Online</p>
@@ -1334,7 +1474,7 @@ const WhatsappPage = () => {
 
                             {/* Messages */}
                             <div ref={chatContainerRef} className="flex-grow overflow-y-auto p-4 space-y-4 bg-repeat" style={{backgroundImage: 'url(https://i.pinimg.com/736x/8c/98/99/8c98994518b575bfd8c949e91d20548b.jpg)', backgroundSize: '20%'}}>
-                                {(selectedLead.whatsappHistory || []).map(msg => (
+                                {(selectedLead.whatsapp_history || []).map(msg => (
                                     <div key={msg.id} className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'}`}>
                                         <div className={`max-w-xs md:max-w-md lg:max-w-lg px-4 py-2 rounded-xl ${msg.sender === 'agent' ? 'bg-[#dcf8c6] text-brand-text' : 'bg-white text-brand-text shadow-sm'}`}>
                                             <p className="text-sm break-words">{msg.content}</p>
@@ -1378,21 +1518,29 @@ const WhatsappPage = () => {
 // --- PROPERTY CRUD PAGES ---
 const PropertyDetailPage = () => {
     const { id } = useParams<{ id: string }>();
+    const { client } = useAuth();
     const navigate = useNavigate();
-    const { properties, agents } = useData();
+    const [property, setProperty] = useState<Property | null>(null);
+    const [agent, setAgent] = useState<Agent | null>(null);
     const [mainImage, setMainImage] = useState('');
 
-    const property = useMemo(() => properties.find(p => p.id === id), [id, properties]);
-    const agent = useMemo(() => agents.find(a => a.id === property?.agentId), [property, agents]);
+     useEffect(() => {
+        const fetchPropertyDetails = async () => {
+            if (!id) return;
+            const { data: propertyData } = await client.from('properties').select('*').eq('id', id).single();
+            if (propertyData) {
+                setProperty(propertyData);
+                setMainImage(propertyData.images[0]);
+                const { data: agentData } = await client.from('agents').select('*').eq('id', propertyData.agent_id).single();
+                setAgent(agentData);
+            }
+        };
+        fetchPropertyDetails();
+    }, [id, client]);
 
-    useEffect(() => {
-        if (property) {
-            setMainImage(property.images[0]);
-        }
-    }, [property]);
 
     if (!property) {
-        return <PageContainer title="Imóvel não encontrado" showBackButton>O imóvel que você procura não existe ou foi removido.</PageContainer>;
+        return <PageContainer title="Carregando..." showBackButton>Carregando dados do imóvel...</PageContainer>;
     }
     
     const formatPrice = (price: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
@@ -1429,7 +1577,7 @@ const PropertyDetailPage = () => {
                             <div className="flex items-center gap-2"><BuildingIcon className="h-5 w-5 text-brand-text-light"/>Área: {property.area} m²</div>
                             <div className="flex items-center gap-2"><UsersIcon className="h-5 w-5 text-brand-text-light"/>Quartos: {property.bedrooms}</div>
                             <div className="flex items-center gap-2"><UsersIcon className="h-5 w-5 text-brand-text-light"/>Banheiros: {property.bathrooms}</div>
-                            <div className="flex items-center gap-2"><UsersIcon className="h-5 w-5 text-brand-text-light"/>Vagas: {property.garageSpaces}</div>
+                            <div className="flex items-center gap-2"><UsersIcon className="h-5 w-5 text-brand-text-light"/>Vagas: {property.garage_spaces}</div>
                         </div>
                         
                         <div className="text-brand-text-light text-sm my-4 border-t pt-4">
@@ -1441,7 +1589,7 @@ const PropertyDetailPage = () => {
                              <div className="border-t pt-4 mt-auto">
                                 <h3 className="font-semibold text-brand-text mb-2">Corretor Responsável</h3>
                                 <div className="flex items-center gap-3">
-                                    <img src={agent.avatarUrl} alt={agent.name} className="h-12 w-12 rounded-full"/>
+                                    <img src={agent.avatar_url} alt={agent.name} className="h-12 w-12 rounded-full object-cover"/>
                                     <div>
                                         <p className="font-bold text-brand-text">{agent.name}</p>
                                         <p className="text-sm text-brand-text-light">{agent.email}</p>
@@ -1459,33 +1607,45 @@ const PropertyDetailPage = () => {
 const PropertyFormPage = () => {
     const { id } = useParams<{ id?: string }>();
     const navigate = useNavigate();
-    const { properties, addProperty, updateProperty, agents } = useData();
-    const { currentUser } = useAuth();
+    const { profile, client } = useAuth();
     
-    const [property, setProperty] = useState<Omit<Property, 'id'>>({
+    const [property, setProperty] = useState<Omit<Property, 'id' | 'created_at'>>({
         title: '', type: PropertyType.Apartamento, description: '', location: { bairro: '', cidade: 'São Paulo' },
-        price: 0, area: 0, bedrooms: 0, bathrooms: 0, garageSpaces: 0,
-        agentId: currentUser?.id || '', images: [''], status: PropertyStatus.Disponivel,
+        price: 0, area: 0, bedrooms: 0, bathrooms: 0, garage_spaces: 0,
+        agent_id: profile?.id || '', images: [''], status: PropertyStatus.Disponivel,
     });
     const [isGenerating, setIsGenerating] = useState(false);
+    const [agents, setAgents] = useState<Agent[]>([]);
 
     const isEditing = Boolean(id);
 
     useEffect(() => {
+        const fetchAgents = async () => {
+            const { data } = await client.from('agents').select('*');
+            setAgents(data || []);
+        };
+        fetchAgents();
+
         if (isEditing) {
-            const existingProperty = properties.find(p => p.id === id);
-            if (existingProperty) {
-                setProperty(existingProperty);
+            const fetchProperty = async () => {
+                const { data } = await client.from('properties').select('*').eq('id', id).single();
+                if (data) {
+                    const { id: propId, created_at, ...rest } = data;
+                    setProperty(rest);
+                }
             }
+            fetchProperty();
         }
-    }, [id, properties, isEditing]);
+    }, [id, isEditing, client]);
     
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
+        const numValue = ['price', 'area', 'bedrooms', 'bathrooms', 'garage_spaces'].includes(name) ? parseFloat(value) : value;
+
         if (name === 'bairro' || name === 'cidade') {
             setProperty(prev => ({ ...prev, location: { ...prev.location, [name]: value } }));
         } else {
-            setProperty(prev => ({ ...prev, [name]: value }));
+            setProperty(prev => ({ ...prev, [name]: numValue }));
         }
     };
     
@@ -1505,20 +1665,24 @@ const PropertyFormPage = () => {
 
     const handleGenerateDescription = async () => {
         setIsGenerating(true);
-        const { images, agentId, status, ...details } = property;
-        const description = await getPropertyDescription(details);
+        const { agent_id, status, ...details } = property;
+        const description = await getPropertyDescription(details as any); // cast because of partial type
         setProperty(prev => ({ ...prev, description }));
         setIsGenerating(false);
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (isEditing) {
-            updateProperty({ ...property, id: id! });
+        
+        const { error } = isEditing
+            ? await client.from('properties').update(property).eq('id', id!)
+            : await client.from('properties').insert({ ...property, agent_id: profile!.id });
+
+        if (error) {
+            alert('Erro ao salvar imóvel: ' + error.message);
         } else {
-            addProperty({ ...property, id: `prop-${Date.now()}` });
+            navigate('/properties');
         }
-        navigate('/properties');
     };
 
     return (
@@ -1576,8 +1740,8 @@ const PropertyFormPage = () => {
                         <input type="number" name="bathrooms" value={property.bathrooms} onChange={handleChange} required className="input-style" />
                     </div>
                      <div>
-                        <label htmlFor="garageSpaces" className="block text-sm font-medium text-brand-text-light">Vagas</label>
-                        <input type="number" name="garageSpaces" value={property.garageSpaces} onChange={handleChange} required className="input-style" />
+                        <label htmlFor="garage_spaces" className="block text-sm font-medium text-brand-text-light">Vagas</label>
+                        <input type="number" name="garage_spaces" value={property.garage_spaces} onChange={handleChange} required className="input-style" />
                     </div>
                 </div>
                 
@@ -1597,8 +1761,8 @@ const PropertyFormPage = () => {
                 </div>
 
                 <div>
-                    <label htmlFor="agentId" className="block text-sm font-medium text-brand-text-light">Corretor Responsável</label>
-                    <select name="agentId" value={property.agentId} onChange={handleChange} className="input-style">
+                    <label htmlFor="agent_id" className="block text-sm font-medium text-brand-text-light">Corretor Responsável</label>
+                    <select name="agent_id" value={property.agent_id} onChange={handleChange} className="input-style">
                         {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
                 </div>
@@ -1695,7 +1859,7 @@ const PropertyTypePieChart: React.FC<{ data: { type: string; value: number }[] }
             <div className="relative w-48 h-48">
                  <svg viewBox="0 0 36 36" className="w-full h-full">
                     {data.reduce((acc, item, index) => {
-                        const percentage = (item.value / total) * 100;
+                        const percentage = total > 0 ? (item.value / total) * 100 : 0;
                         const offset = acc.offset;
                         acc.offset += percentage;
                         return {
@@ -1730,48 +1894,69 @@ const PropertyTypePieChart: React.FC<{ data: { type: string; value: number }[] }
     );
 };
 const DashboardPage = () => {
-    const { currentUser } = useAuth();
-    const { leads, properties, visits } = useData();
-    const dashboardData = useMemo(() => {
-        const totalLeads = leads.length;
-        const availableProperties = properties.filter(p => p.status === PropertyStatus.Disponivel).length;
-        const totalVisits = visits.length;
+    const { profile, client } = useAuth();
+    const [dashboardData, setDashboardData] = useState<any>(null);
+
+    useEffect(() => {
+        if (!profile) return;
         
-        const closedLeadsCount = leads.filter(l => l.status === LeadStatus.Fechado).length;
-        const activeLeadsCount = leads.filter(l => l.status !== LeadStatus.Novo && l.status !== LeadStatus.Perdido).length;
-        const conversionRate = activeLeadsCount > 0 ? (closedLeadsCount / activeLeadsCount) * 100 : 0;
+        const fetchData = async () => {
+            const [leadsRes, propertiesRes, visitsRes] = await Promise.all([
+                client.from('leads').select('status', { count: 'exact' }).eq('agent_id', profile.id),
+                client.from('properties').select('type, status', { count: 'exact' }),
+                client.from('visits').select('start', { count: 'exact' }).eq('agent_id', profile.id)
+            ]);
 
-        const leadsByStatus = leads.reduce((acc, lead) => {
-            acc[lead.status] = (acc[lead.status] || 0) + 1;
-            return acc;
-        }, {} as { [key in LeadStatus]: number });
+            const leads = leadsRes.data || [];
+            const properties = propertiesRes.data || [];
+            const visits = visitsRes.data || [];
 
-        const conversionFunnelData = [
-            { stage: LeadStatus.Novo, value: leadsByStatus[LeadStatus.Novo] || 0 },
-            { stage: LeadStatus.EmNegociacao, value: leadsByStatus[LeadStatus.EmNegociacao] || 0 },
-            { stage: LeadStatus.Visitou, value: leadsByStatus[LeadStatus.Visitou] || 0 },
-            { stage: LeadStatus.Fechado, value: leadsByStatus[LeadStatus.Fechado] || 0 },
-        ];
-        
-        const today = new Date();
-        const startOfTodayWeek = _startOfWeek(today, { weekStartsOn: 1 });
-        const weekDays = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
-        const visitsTrendData = weekDays.map((day, index) => {
-            const date = addDays(startOfTodayWeek, index);
-            const dailyVisits = visits.filter(v => getDay(v.start) === getDay(date)).length;
-            return { day, visits: dailyVisits };
-        });
+            const totalLeads = leadsRes.count;
+            const availableProperties = (await client.from('properties').select('status', { count: 'exact' }).eq('status', PropertyStatus.Disponivel)).count;
+            
+            const totalVisitsThisWeek = visits.filter(v => new Date(v.start) >= startOfWeek(new Date(), { weekStartsOn: 1 })).length;
+            
+            const closedLeadsCount = leads.filter(l => l.status === LeadStatus.Fechado).length;
+            const activeLeadsCount = leads.filter(l => l.status === LeadStatus.EmNegociacao || l.status === LeadStatus.Visitou).length;
+            const conversionRate = (activeLeadsCount + closedLeadsCount) > 0 ? (closedLeadsCount / (activeLeadsCount + closedLeadsCount)) * 100 : 0;
 
-        const propertiesByType = Object.values(PropertyType).map(type => ({
-            type,
-            value: properties.filter(p => p.type === type).length,
-        })).filter(item => item.value > 0);
+            const leadsByStatus = leads.reduce((acc, lead) => {
+                acc[lead.status] = (acc[lead.status] || 0) + 1;
+                return acc;
+            }, {} as { [key: string]: number });
 
-        return { totalLeads, availableProperties, conversionRate, totalVisits, conversionFunnelData, visitsTrendData, propertiesByType };
-    }, [leads, properties, visits]);
+            const conversionFunnelData = [
+                { stage: LeadStatus.Novo, value: leadsByStatus[LeadStatus.Novo] || 0 },
+                { stage: LeadStatus.EmNegociacao, value: leadsByStatus[LeadStatus.EmNegociacao] || 0 },
+                { stage: LeadStatus.Visitou, value: leadsByStatus[LeadStatus.Visitou] || 0 },
+                { stage: LeadStatus.Fechado, value: leadsByStatus[LeadStatus.Fechado] || 0 },
+            ];
+            
+            const today = new Date();
+            const startOfTodayWeek = startOfWeek(today, { weekStartsOn: 1 });
+            const weekDays = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+            const visitsTrendData = weekDays.map((day, index) => {
+                const date = addDays(startOfTodayWeek, index);
+                const dailyVisits = visits.filter(v => isSameDay(new Date(v.start), date)).length;
+                return { day, visits: dailyVisits };
+            });
+
+            const { data: allProperties } = await client.from('properties').select('type');
+            const propertiesByType = Object.values(PropertyType).map(type => ({
+                type,
+                value: (allProperties || []).filter(p => p.type === type).length,
+            })).filter(item => item.value > 0);
+
+            setDashboardData({ totalLeads, availableProperties, conversionRate, totalVisits: totalVisitsThisWeek, conversionFunnelData, visitsTrendData, propertiesByType });
+        };
+
+        fetchData();
+    }, [profile, client]);
+    
+    if(!dashboardData) return <PageContainer title={`Olá, ${profile?.name.split(' ')[0]}!`}>Carregando dados...</PageContainer>
 
     return (
-        <PageContainer title={`Olá, ${currentUser?.name.split(' ')[0]}!`}>
+        <PageContainer title={`Olá, ${profile?.name.split(' ')[0]}!`}>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
                 <KpiCard title="Total de Leads" value={String(dashboardData.totalLeads)} icon={UsersIcon} description="Leads no funil" />
                 <KpiCard title="Imóveis Disponíveis" value={String(dashboardData.availableProperties)} icon={BuildingIcon} description="Prontos para venda" />
@@ -1795,32 +1980,38 @@ const DashboardPage = () => {
         </PageContainer>
     );
 };
-const _startOfWeek = (date: Date, options?: { weekStartsOn?: number; locale?: object }): Date => {
-    const d = new Date(date);
-    // locale is ignored but included in signature to match usage
-    const weekStartsOn = options?.weekStartsOn ?? 0;
-    const day = d.getDay();
-    const diff = (day - weekStartsOn + 7) % 7;
-    d.setDate(d.getDate() - diff);
-    d.setHours(0, 0, 0, 0);
-    return d;
-};
-
 interface NewVisitModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (visit: Omit<Visit, 'id'>) => void;
-    currentUser: Agent;
+    onSave: (visit: Omit<Visit, 'id' | 'created_at'>) => void;
+    profile: Agent;
 }
-const NewVisitModal: React.FC<NewVisitModalProps> = ({ isOpen, onClose, onSave, currentUser }) => {
-    const { agents, leads, properties } = useData();
+const NewVisitModal: React.FC<NewVisitModalProps> = ({ isOpen, onClose, onSave, profile }) => {
+    const { client } = useAuth();
+    const [agents, setAgents] = useState<Agent[]>([]);
+    const [leads, setLeads] = useState<Lead[]>([]);
+    const [properties, setProperties] = useState<Property[]>([]);
     const [title, setTitle] = useState('');
     const [leadId, setLeadId] = useState('');
     const [propertyId, setPropertyId] = useState('');
-    const [agentId, setAgentId] = useState(currentUser.id);
+    const [agentId, setAgentId] = useState(profile.id);
     const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [startTime, setStartTime] = useState(format(new Date(), 'HH:mm'));
     
+    useEffect(() => {
+        const fetchData = async () => {
+            const [agentsRes, leadsRes, propertiesRes] = await Promise.all([
+                client.from('agents').select('*'),
+                client.from('leads').select('id, name').eq('agent_id', profile.id),
+                client.from('properties').select('id, title').eq('status', 'Disponível')
+            ]);
+            setAgents(agentsRes.data || []);
+            setLeads(leadsRes.data || []);
+            setProperties(propertiesRes.data || []);
+        };
+        fetchData();
+    }, [profile, client]);
+
     useEffect(() => {
         if(leadId) {
             const lead = leads.find(l => l.id === leadId);
@@ -1832,14 +2023,14 @@ const NewVisitModal: React.FC<NewVisitModalProps> = ({ isOpen, onClose, onSave, 
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const start = parseISO(`${startDate}T${startTime}`);
+        const start = new Date(`${startDate}T${startTime}`);
         const end = new Date(start.getTime() + 60 * 60 * 1000); // Add 1 hour
         if (!title || !leadId || !propertyId || !agentId || isNaN(start.getTime())) {
             alert("Por favor, preencha todos os campos corretamente.");
             return;
         }
         
-        onSave({ title, start, end, agentId, leadId, propertyId });
+        onSave({ title, start: start.toISOString(), end: end.toISOString(), agent_id: agentId, lead_id: leadId, property_id: propertyId });
         onClose();
     };
 
@@ -1867,7 +2058,7 @@ const NewVisitModal: React.FC<NewVisitModalProps> = ({ isOpen, onClose, onSave, 
                            <label htmlFor="propertyId" className="block text-sm font-medium text-brand-text-light">Imóvel</label>
                            <select id="propertyId" value={propertyId} onChange={e => setPropertyId(e.target.value)} required className="mt-1 block w-full input-style">
                                <option value="" disabled>Selecione o imóvel</option>
-                               {properties.filter(p=>p.status === PropertyStatus.Disponivel).map(prop => <option key={prop.id} value={prop.id}>{prop.title}</option>)}
+                               {properties.map(prop => <option key={prop.id} value={prop.id}>{prop.title}</option>)}
                            </select>
                        </div>
                     </div>
@@ -1903,13 +2094,40 @@ const NewVisitModal: React.FC<NewVisitModalProps> = ({ isOpen, onClose, onSave, 
 };
 
 const AgendaPage = () => {
-    const { currentUser } = useAuth();
-    const { agents, visits, addVisit, leads, properties } = useData();
+    const { profile, client } = useAuth();
+    const [visits, setVisits] = useState<Visit[]>([]);
+    const [agents, setAgents] = useState<Agent[]>([]);
+    const [leads, setLeads] = useState<Lead[]>([]);
+    const [properties, setProperties] = useState<Property[]>([]);
     const [selectedEvent, setSelectedEvent] = useState<Visit | undefined>(undefined);
     const [isNewEventModalOpen, setIsNewEventModalOpen] = useState(false);
     const [currentDate, setCurrentDate] = useState(new Date());
 
-    const weekStart = useMemo(() => _startOfWeek(currentDate, { locale: ptBR, weekStartsOn: 1 }), [currentDate]);
+    useEffect(() => {
+        if(!profile) return;
+        const fetchAllData = async () => {
+            const [agentsRes, leadsRes, propertiesRes, visitsRes] = await Promise.all([
+                 client.from('agents').select('*'),
+                 client.from('leads').select('id, name'),
+                 client.from('properties').select('id, title'),
+                 client.from('visits').select('*').eq('agent_id', profile.id)
+            ]);
+            setAgents(agentsRes.data || []);
+            setLeads(leadsRes.data || []);
+            setProperties(propertiesRes.data || []);
+            setVisits(visitsRes.data || []);
+        };
+        fetchAllData();
+
+         const channel = client.channel('agenda-visits-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'visits' }, fetchAllData)
+            .subscribe();
+
+        return () => { client.removeChannel(channel); };
+    }, [profile, client]);
+
+
+    const weekStart = useMemo(() => startOfWeek(currentDate, { locale: ptBR, weekStartsOn: 1 }), [currentDate]);
     const weekEnd = useMemo(() => endOfWeek(currentDate, { locale: ptBR, weekStartsOn: 1 }), [currentDate]);
     const days = useMemo(() => eachDayOfInterval({ start: weekStart, end: weekEnd }), [weekStart, weekEnd]);
 
@@ -1918,8 +2136,8 @@ const AgendaPage = () => {
         days.forEach(day => {
             const dayKey = format(day, 'yyyy-MM-dd');
             grouped[dayKey] = visits
-                .filter(visit => isSameDay(visit.start, day))
-                .sort((a, b) => a.start.getTime() - b.start.getTime());
+                .filter(visit => isSameDay(new Date(visit.start), day))
+                .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
         });
         return grouped;
     }, [days, visits]);
@@ -1930,9 +2148,13 @@ const AgendaPage = () => {
 
     const handleCloseModal = () => setSelectedEvent(undefined);
     
-    const handleSaveNewVisit = (newVisit: Omit<Visit, 'id'>) => {
-        addVisit(newVisit);
-        setIsNewEventModalOpen(false);
+    const handleSaveNewVisit = async (newVisit: Omit<Visit, 'id' | 'created_at'>) => {
+        const { error } = await client.from('visits').insert(newVisit);
+        if (error) {
+            alert("Erro ao salvar visita: " + error.message);
+        } else {
+            setIsNewEventModalOpen(false);
+        }
     };
 
     const agentColors: { [key: string]: string } = {
@@ -1990,12 +2212,12 @@ const AgendaPage = () => {
                                     <div 
                                         key={event.id} 
                                         onClick={() => setSelectedEvent(event)}
-                                        className={`p-2 rounded-md cursor-pointer text-white text-left transition-colors ${agentColors[event.agentId] || 'bg-gray-500'}`}
+                                        className={`p-2 rounded-md cursor-pointer text-white text-left transition-colors ${agentColors[event.agent_id] || 'bg-gray-500'}`}
                                         role="button"
                                         aria-label={`Ver detalhes de ${event.title}`}
                                     >
                                         <p className="font-semibold text-xs truncate">{event.title}</p>
-                                        <p className="text-xs opacity-90">{format(event.start, 'HH:mm')} - {format(event.end, 'HH:mm')}</p>
+                                        <p className="text-xs opacity-90">{format(new Date(event.start), 'HH:mm')} - {format(new Date(event.end), 'HH:mm')}</p>
                                     </div>
                                 ))}
                             </div>
@@ -2013,20 +2235,20 @@ const AgendaPage = () => {
                              <button onClick={handleCloseModal} className="p-1 rounded-full hover:bg-gray-200"><XIcon className="h-5 w-5"/></button>
                         </div>
                         <div className="space-y-4 text-brand-text-light">
-                            <div className="flex items-center gap-3"><ClockIcon className="h-5 w-5"/><span>{format(selectedEvent.start, 'dd/MM/yyyy HH:mm', { locale: ptBR })} - {format(selectedEvent.end, 'HH:mm', { locale: ptBR })}</span></div>
-                            <div className="flex items-center gap-3"><UsersIcon className="h-5 w-5"/><span>Lead: {leads.find(l => l.id === selectedEvent.leadId)?.name}</span></div>
-                            <div className="flex items-center gap-3"><BuildingIcon className="h-5 w-5"/><span>Imóvel: {properties.find(p => p.id === selectedEvent.propertyId)?.title}</span></div>
-                            <div className="flex items-center gap-3"><StarIcon className="h-5 w-5"/><span>Corretor: {agents.find(a => a.id === selectedEvent.agentId)?.name}</span></div>
+                            <div className="flex items-center gap-3"><ClockIcon className="h-5 w-5"/><span>{format(new Date(selectedEvent.start), 'dd/MM/yyyy HH:mm', { locale: ptBR })} - {format(new Date(selectedEvent.end), 'HH:mm', { locale: ptBR })}</span></div>
+                            <div className="flex items-center gap-3"><UsersIcon className="h-5 w-5"/><span>Lead: {leads.find(l => l.id === selectedEvent.lead_id)?.name}</span></div>
+                            <div className="flex items-center gap-3"><BuildingIcon className="h-5 w-5"/><span>Imóvel: {properties.find(p => p.id === selectedEvent.property_id)?.title}</span></div>
+                            <div className="flex items-center gap-3"><StarIcon className="h-5 w-5"/><span>Corretor: {agents.find(a => a.id === selectedEvent.agent_id)?.name}</span></div>
                         </div>
                     </div>
                 </div>
             )}
             
-            {currentUser && <NewVisitModal 
+            {profile && <NewVisitModal 
                 isOpen={isNewEventModalOpen}
                 onClose={() => setIsNewEventModalOpen(false)}
                 onSave={handleSaveNewVisit}
-                currentUser={currentUser}
+                profile={profile}
             />}
         </PageContainer>
     );
@@ -2034,14 +2256,14 @@ const AgendaPage = () => {
 
 // --- LAYOUT FOR AUTHENTICATED APP ---
 const MainLayout = () => {
-    const { currentUser, loading } = useAuth();
+    const { session, loading } = useAuth();
     const location = useLocation();
 
     if (loading) {
         return <div className="flex justify-center items-center h-screen bg-brand-secondary text-brand-text">Carregando...</div>;
     }
 
-    if (!currentUser) {
+    if (!session) {
         return <Navigate to="/login" state={{ from: location }} replace />;
     }
 

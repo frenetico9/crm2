@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App, { DataProvider } from './App';
+import App from './App';
 import { HashRouter } from 'react-router-dom';
 
 const rootElement = document.getElementById('root');
@@ -12,9 +12,7 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <HashRouter>
-      <DataProvider>
-        <App />
-      </DataProvider>
+      <App />
     </HashRouter>
   </React.StrictMode>
 );

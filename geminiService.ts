@@ -3,12 +3,13 @@ import type { Lead, Property } from './types';
 // O frontend NÃO tem mais acesso direto à API do Gemini.
 // As funções agora atuam como clientes para o nosso próprio backend (serverless functions).
 
-export const getPropertySuggestions = async (lead: Lead, properties: Property[]): Promise<string[]> => {
+export const getPropertySuggestions = async (lead: Lead): Promise<string[]> => {
     try {
         const response = await fetch('/api/propertySuggestions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lead, properties }),
+            // Agora enviamos apenas o lead. O backend buscará as propriedades.
+            body: JSON.stringify({ lead }),
         });
 
         if (!response.ok) {
@@ -25,7 +26,7 @@ export const getPropertySuggestions = async (lead: Lead, properties: Property[])
     }
 };
 
-export const getPropertyDescription = async (property: Omit<Property, 'images' | 'agentId' | 'status' | 'id'>): Promise<string> => {
+export const getPropertyDescription = async (property: Partial<Omit<Property, 'id' | 'created_at' | 'images' | 'agent_id' | 'status'>>): Promise<string> => {
     try {
         const response = await fetch('/api/generateDescription', {
             method: 'POST',

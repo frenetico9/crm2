@@ -1,3 +1,11 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
+
 export enum LeadStatus {
   Novo = 'Novo',
   EmNegociacao = 'Em Negociação',
@@ -20,16 +28,16 @@ export enum PropertyType {
 }
 
 export interface Agent {
-  id: string;
+  id: string; // This will be a UUID from Supabase Auth
   name: string;
   email: string;
-  password?: string;
-  avatarUrl: string;
+  avatar_url: string;
   phone?: string;
 }
 
 export interface Property {
   id:string;
+  created_at: string;
   title: string;
   type: PropertyType;
   description: string;
@@ -41,8 +49,8 @@ export interface Property {
   area: number;
   bedrooms: number;
   bathrooms: number;
-  garageSpaces: number;
-  agentId: string;
+  garage_spaces: number;
+  agent_id: string;
   images: string[];
   status: PropertyStatus;
 }
@@ -57,44 +65,41 @@ export interface WhatsappMessage {
 
 export interface Lead {
   id: string;
+  created_at: string;
   name: string;
   email: string;
   phone: string;
-  agentId: string;
+  agent_id: string;
   status: LeadStatus;
   score: number;
-  lastContact: string;
+  last_contact: string;
   interest: {
     type: PropertyType[];
     bairro: string[];
     priceRange: [number, number];
   };
-  whatsappHistory?: WhatsappMessage[];
-}
-
-export interface Interaction {
-  id: string;
-  type: 'WhatsApp' | 'Email' | 'Ligação';
-  date: string;
-  content: string;
+  whatsapp_history?: WhatsappMessage[];
 }
 
 export interface Visit {
   id: string;
+  created_at: string;
   title: string;
-  start: Date;
-  end: Date;
-  agentId: string;
-  leadId: string;
-  propertyId: string;
+  start: string; // ISO String
+  end: string;   // ISO String
+  agent_id: string;
+  lead_id: string;
+  property_id: string;
 }
 
 export interface Notification {
   id: string;
+  created_at: string;
+  user_id: string;
   type: 'new_lead' | 'visit_reminder' | 'message';
   title: string;
   content: string;
-  timestamp: string; // ISO string
+  timestamp: string;
   read: boolean;
   link?: string;
 }
