@@ -1,11 +1,17 @@
-
-
 import { createClient } from '@supabase/supabase-js'
 import type { Agent, Lead, Notification, Property, Visit, PropertyType, PropertyStatus, LeadStatus, WhatsappMessage } from './types'
 
 // By creating fully explicit types for database operations, we avoid complex
 // generics like Partial<Omit<T, K>> which can cause the TypeScript compiler
 // to fail with "Type instantiation is excessively deep" errors.
+
+type AgentInsertPayload = {
+  id: string;
+  name: string;
+  email: string;
+  avatar_url: string;
+  phone?: string | null;
+};
 
 type AgentUpdatePayload = {
   name?: string;
@@ -112,7 +118,7 @@ export interface Database {
     Tables: {
       agents: {
         Row: Agent;
-        Insert: never; // Inserts are likely handled by a database trigger on auth.users
+        Insert: AgentInsertPayload;
         Update: AgentUpdatePayload;
       };
       properties: {
