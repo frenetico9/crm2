@@ -1,3 +1,5 @@
+
+
 import React, { useState, useMemo, useEffect, useCallback, createContext, useContext, useRef } from 'react';
 import { Routes, Route, Link, useParams, useNavigate, useLocation, Navigate, useSearchParams } from 'react-router-dom';
 import {
@@ -2266,12 +2268,18 @@ const AgendaPage = () => {
     
     const handleDeleteVisit = async (visitId: string) => {
         if (window.confirm("Tem certeza que deseja cancelar esta visita?")) {
-            const { error } = await client.from('visits').delete().eq('id', visitId);
+            const { data, error } = await client.from('visits').delete().eq('id', visitId).select();
+
             if (error) {
                 alert("Falha ao cancelar a visita: " + error.message);
-            } else {
+            } else if (data && data.length > 0) {
+                 // Success! The visit was deleted from the database.
+                 // Update local state for immediate UI feedback.
                 setVisits(currentVisits => currentVisits.filter(v => v.id !== visitId));
                 handleCloseModal();
+            } else {
+                // No error, but no rows were deleted (likely due to RLS policies)
+                alert("Não foi possível cancelar a visita. Verifique suas permissões e tente novamente.");
             }
         }
     };
