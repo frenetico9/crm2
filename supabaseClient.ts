@@ -1,18 +1,22 @@
-
-
 import { createClient } from '@supabase/supabase-js'
-import type { Agent, Lead, Notification, Property, Visit, PropertyType, PropertyStatus, LeadStatus, WhatsappMessage } from './types'
+import type { PropertyType, PropertyStatus, LeadStatus, WhatsappMessage } from './types'
 
 // By creating fully explicit types for database operations, we avoid complex
 // generics like Partial<Omit<T, K>> which can cause the TypeScript compiler
 // to fail with "Type instantiation is excessively deep" errors.
-// The payload types have been inlined into the Database interface below.
+// The payload types, including Row, have been inlined into the Database interface below.
 
 export interface Database {
   public: {
     Tables: {
       agents: {
-        Row: Agent;
+        Row: {
+          id: string;
+          name: string;
+          email: string;
+          avatar_url: string;
+          phone?: string | null;
+        };
         Insert: {
           id: string;
           name: string;
@@ -27,7 +31,25 @@ export interface Database {
         };
       };
       properties: {
-        Row: Property;
+        Row: {
+          id:string;
+          created_at: string;
+          title: string;
+          type: PropertyType;
+          description: string;
+          location: {
+            bairro: string;
+            cidade: string;
+          };
+          price: number;
+          area: number;
+          bedrooms: number;
+          bathrooms: number;
+          garage_spaces: number;
+          agent_id: string;
+          images: string[];
+          status: PropertyStatus;
+        };
         Insert: {
           title: string;
           type: PropertyType;
@@ -58,7 +80,23 @@ export interface Database {
         };
       };
       leads: {
-        Row: Lead;
+        Row: {
+          id: string;
+          created_at: string;
+          name: string;
+          email: string;
+          phone: string;
+          agent_id: string;
+          status: LeadStatus;
+          score: number;
+          last_contact: string;
+          interest: {
+            type: PropertyType[];
+            bairro: string[];
+            priceRange: [number, number];
+          };
+          whatsapp_history?: WhatsappMessage[];
+        };
         Insert: {
             name: string;
             email: string;
@@ -83,7 +121,16 @@ export interface Database {
         };
       };
       visits: {
-        Row: Visit;
+        Row: {
+          id: string;
+          created_at: string;
+          title: string;
+          start: string;
+          end: string;
+          agent_id: string;
+          lead_id: string;
+          property_id: string;
+        };
         Insert: {
             title: string;
             start: string;
@@ -102,7 +149,17 @@ export interface Database {
         };
       };
       notifications: {
-        Row: Notification;
+        Row: {
+          id: string;
+          created_at: string;
+          user_id: string;
+          type: 'new_lead' | 'visit_reminder' | 'message';
+          title: string;
+          content: string;
+          timestamp: string;
+          read: boolean;
+          link?: string;
+        };
         Insert: {
             user_id: string;
             type: 'new_lead' | 'visit_reminder' | 'message';
