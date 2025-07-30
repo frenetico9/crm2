@@ -1,9 +1,4 @@
 
-
-
-
-
-
 import React, { useState, useMemo, useEffect, useCallback, createContext, useContext, useRef } from 'react';
 import { Routes, Route, Link, useParams, useNavigate, useLocation, Navigate, useSearchParams } from 'react-router-dom';
 import {
@@ -59,7 +54,8 @@ const BellIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns
 const CopyIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>;
 const ListIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>;
 const LayoutGridIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/></svg>;
-
+const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>;
+const ArrowDownIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>;
 
 // --- AUTHENTICATION ---
 interface AuthContextType {
@@ -1152,6 +1148,7 @@ const AIWhatsappSuggester: React.FC<{ lead: Lead }> = ({ lead }) => {
 const LeadDetailPage = () => {
     const { id } = useParams<{ id: string }>();
     const { client } = useAuth();
+    const navigate = useNavigate();
     const [lead, setLead] = useState<Lead | null>(null);
     const [agent, setAgent] = useState<Agent | null>(null);
 
@@ -1166,6 +1163,7 @@ const LeadDetailPage = () => {
             
             if (error) {
                 console.error("Error fetching lead", error);
+                setLead(null); // Handle case where lead is not found
             } else if (leadData) {
                 setLead(leadData);
                 const { data: agentData } = await client
@@ -1179,14 +1177,32 @@ const LeadDetailPage = () => {
         fetchLeadDetails();
     }, [id, client]);
     
+    const handleDeleteLead = async () => {
+        if (!lead) return;
+        if (window.confirm(`Tem certeza que deseja excluir o lead "${lead.name}"? Esta ação não pode ser desfeita.`)) {
+            const { error } = await client.from('leads').delete().eq('id', lead.id);
+            if (error) {
+                alert("Falha ao excluir o lead: " + error.message);
+            } else {
+                alert("Lead excluído com sucesso.");
+                navigate('/leads');
+            }
+        }
+    };
+
     if (!lead) {
-        return <PageContainer title="Carregando..." showBackButton>Carregando dados do lead...</PageContainer>;
+        return <PageContainer title="Carregando..." showBackButton>Carregando dados do lead ou lead não encontrado...</PageContainer>;
     }
 
     const formatPrice = (price: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
 
     return (
-        <PageContainer title={lead.name} showBackButton>
+        <PageContainer title={lead.name} showBackButton actions={
+            <button onClick={handleDeleteLead} className="bg-red-500 text-white px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-red-600 transition-colors text-sm font-medium">
+                <TrashIcon className="h-4 w-4"/> 
+                <span className="hidden sm:inline">Excluir</span>
+            </button>
+        }>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Left Column: Lead Details & AI Actions */}
                 <div className="lg:col-span-2 space-y-6">
@@ -1206,7 +1222,7 @@ const LeadDetailPage = () => {
                             </div>
                             <div className="p-3 bg-gray-50 rounded-lg">
                                 <p className="text-sm text-brand-text-light">Corretor</p>
-                                <p className="font-bold text-lg text-brand-text">{agent?.name}</p>
+                                <p className="font-bold text-lg text-brand-text truncate">{agent?.name}</p>
                             </div>
                             <div className="p-3 bg-gray-50 rounded-lg col-span-2">
                                 <p className="text-sm text-brand-text-light">Orçamento</p>
@@ -1543,6 +1559,19 @@ const PropertyDetailPage = () => {
         fetchPropertyDetails();
     }, [id, client]);
 
+    const handleDeleteProperty = async () => {
+        if (!property) return;
+        if (window.confirm(`Tem certeza que deseja excluir o imóvel "${property.title}"? Esta ação não pode ser desfeita.`)) {
+            const { error } = await client.from('properties').delete().eq('id', property.id);
+            if (error) {
+                alert("Falha ao excluir o imóvel: " + error.message);
+            } else {
+                alert("Imóvel excluído com sucesso.");
+                navigate('/properties');
+            }
+        }
+    };
+
 
     if (!property) {
         return <PageContainer title="Carregando..." showBackButton>Carregando dados do imóvel...</PageContainer>;
@@ -1552,9 +1581,15 @@ const PropertyDetailPage = () => {
 
     return (
         <PageContainer title={property.title} showBackButton actions={
-             <button onClick={() => navigate(`/properties/${id}/edit`)} className="bg-brand-primary text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-opacity-90 transition-colors">
-                <PlusIcon className="h-5 w-5"/> Editar
-             </button>
+            <div className="flex items-center gap-2">
+                 <button onClick={() => navigate(`/properties/${id}/edit`)} className="bg-brand-primary text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-opacity-90 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                    <span className="hidden sm:inline">Editar</span>
+                 </button>
+                 <button onClick={handleDeleteProperty} title="Excluir Imóvel" className="bg-red-500 text-white p-2.5 rounded-lg hover:bg-red-600 transition-colors">
+                    <TrashIcon className="h-5 w-5"/>
+                </button>
+            </div>
         }>
             <div className="bg-white rounded-lg shadow-md overflow-hidden">
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-0">
@@ -1801,38 +1836,66 @@ const ChartContainer: React.FC<{ title: string; children: React.ReactNode }> = (
         {children}
     </div>
 );
-const ConversionFunnelChart: React.FC<{ data: { stage: string; value: number }[] }> = ({ data }) => {
+
+const ConversionFunnelChart: React.FC<{ data: { stage: LeadStatus; value: number }[] }> = ({ data }) => {
     const navigate = useNavigate();
-    if (!data.length) return null;
-    const maxValue = data[0].value;
-    const colors = ['#0052CC', '#4C9AFF', '#B3D4FF', '#EBF5FF'];
+    if (!data.length) return <div className="flex items-center justify-center h-full text-gray-500">Dados insuficientes.</div>;
+
+    const filteredData = data.filter(d => d.value > 0 && d.stage !== LeadStatus.Perdido);
+    const maxValue = filteredData.length > 0 ? filteredData[0].value : 0;
+    const colors = ['#0052CC', '#2684FF', '#57A8FF', '#8EC9FF'];
+
+    if (maxValue === 0) return <div className="flex items-center justify-center h-full text-gray-500">Nenhum lead no funil.</div>;
+
+    const funnelSegments = filteredData.map((item, index) => {
+        const nextItem = filteredData[index + 1] || { value: 0 };
+        const topWidth = (item.value / maxValue) * 100;
+        const bottomWidth = (nextItem.value / maxValue) * 100;
+        
+        const topOffset = (100 - topWidth) / 2;
+        const bottomOffset = (100 - bottomWidth) / 2;
+
+        const style = {
+            '--offset-top': `${topOffset}%`,
+            '--offset-bottom': `${bottomOffset}%`,
+            '--bg-color': colors[index % colors.length]
+        } as React.CSSProperties;
+        
+        return { ...item, style, conversion: nextItem.value > 0 ? (nextItem.value / item.value) * 100 : null };
+    });
 
     return (
-        <div className="flex flex-col items-center space-y-1 w-full h-80 justify-center">
-            {data.map((item, index) => {
-                const prevValue = index > 0 ? data[index - 1].value : maxValue;
-                const percentage = maxValue > 0 ? (item.value / maxValue * 100).toFixed(1) : 0;
-                const dropOff = prevValue > 0 ? ((prevValue - item.value) / prevValue * 100).toFixed(1) : 0;
-
-                return (
-                    <div key={item.stage} className="flex flex-col items-center cursor-pointer group" onClick={() => navigate(`/leads?status=${item.stage}`)}>
-                        <div className="text-sm font-semibold text-brand-text">{item.stage} ({item.value})</div>
-                        <div className="relative" style={{ width: `${20 + (item.value / maxValue * 80)}%`, minWidth: '80px'}}>
-                            <div style={{ backgroundColor: colors[index % colors.length] }} className="h-10 rounded-sm flex items-center justify-center text-white font-bold text-sm transition-transform group-hover:scale-105">
-                                {percentage}%
-                            </div>
+        <div className="flex flex-col items-center justify-center w-full h-full" style={{minHeight: '320px'}}>
+             <style>{`
+                .funnel-segment {
+                    clip-path: polygon(var(--offset-top) 0, calc(100% - var(--offset-top)) 0, calc(100% - var(--offset-bottom)) 100%, var(--offset-bottom) 100%);
+                    background-color: var(--bg-color);
+                }
+             `}</style>
+            {funnelSegments.map((item, index) => (
+                <React.Fragment key={item.stage}>
+                    <div
+                        className="w-full h-16 funnel-segment transition-transform duration-300 hover:scale-105 cursor-pointer flex items-center justify-center text-white"
+                        style={item.style}
+                        onClick={() => navigate(`/leads?status=${item.stage}`)}
+                    >
+                         <div className="flex justify-between items-center w-full px-4 sm:px-8">
+                            <span className="font-semibold text-sm sm:text-base">{item.stage}</span>
+                            <span className="font-bold text-lg sm:text-xl">{item.value}</span>
                         </div>
-                        {index > 0 && (
-                            <div className="text-xs text-red-500 mt-1">
-                                <span>▼</span> {dropOff}% drop-off
-                            </div>
-                        )}
                     </div>
-                );
-            })}
+                    {item.conversion !== null && (
+                        <div className="flex items-center justify-center h-8 text-xs text-gray-500 font-medium">
+                            <ArrowDownIcon className="h-4 w-4 mr-1"/>
+                            <span>Conversão de {item.conversion.toFixed(1)}%</span>
+                        </div>
+                    )}
+                </React.Fragment>
+            ))}
         </div>
     );
 };
+
 const VisitsTrendChart: React.FC<{ data: { day: string; visits: number }[] }> = ({ data }) => {
     const maxValue = Math.max(...data.map(d => d.visits), 0) || 1;
     return (
@@ -1988,7 +2051,7 @@ const DashboardPage = () => {
 interface NewVisitModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (visit: Omit<Visit, 'id' | 'created_at'>) => void;
+    onSave: (visit: Omit<Visit, 'id' | 'created_at'>) => Promise<void>;
     profile: Agent;
 }
 const NewVisitModal: React.FC<NewVisitModalProps> = ({ isOpen, onClose, onSave, profile }) => {
@@ -2014,19 +2077,23 @@ const NewVisitModal: React.FC<NewVisitModalProps> = ({ isOpen, onClose, onSave, 
             setLeads(leadsRes.data || []);
             setProperties(propertiesRes.data || []);
         };
-        fetchData();
-    }, [profile, client]);
+        if(isOpen) {
+            fetchData();
+        }
+    }, [isOpen, profile, client]);
 
     useEffect(() => {
         if(leadId) {
             const lead = leads.find(l => l.id === leadId);
             if(lead) setTitle(`Visita com ${lead.name}`);
+        } else {
+            setTitle('');
         }
     }, [leadId, leads]);
 
     if (!isOpen) return null;
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const start = new Date(`${startDate}T${startTime}`);
         const end = new Date(start.getTime() + 60 * 60 * 1000); // Add 1 hour
@@ -2035,8 +2102,7 @@ const NewVisitModal: React.FC<NewVisitModalProps> = ({ isOpen, onClose, onSave, 
             return;
         }
         
-        onSave({ title, start: start.toISOString(), end: end.toISOString(), agent_id: agentId, lead_id: leadId, property_id: propertyId });
-        onClose();
+        await onSave({ title, start: start.toISOString(), end: end.toISOString(), agent_id: agentId, lead_id: leadId, property_id: propertyId });
     };
 
     return (
@@ -2108,28 +2174,33 @@ const AgendaPage = () => {
     const [isNewEventModalOpen, setIsNewEventModalOpen] = useState(false);
     const [currentDate, setCurrentDate] = useState(new Date());
 
+    const fetchAllData = useCallback(async () => {
+         if(!profile) return;
+         const [agentsRes, leadsRes, propertiesRes, visitsRes] = await Promise.all([
+             client.from('agents').select('*'),
+             client.from('leads').select('id, name'),
+             client.from('properties').select('id, title'),
+             client.from('visits').select('*').eq('agent_id', profile.id)
+         ]);
+         setAgents(agentsRes.data || []);
+         setLeads(leadsRes.data || []);
+         setProperties(propertiesRes.data || []);
+         setVisits(visitsRes.data || []);
+    }, [profile, client]);
+
+
     useEffect(() => {
         if(!profile) return;
-        const fetchAllData = async () => {
-            const [agentsRes, leadsRes, propertiesRes, visitsRes] = await Promise.all([
-                 client.from('agents').select('*'),
-                 client.from('leads').select('id, name'),
-                 client.from('properties').select('id, title'),
-                 client.from('visits').select('*').eq('agent_id', profile.id)
-            ]);
-            setAgents(agentsRes.data || []);
-            setLeads(leadsRes.data || []);
-            setProperties(propertiesRes.data || []);
-            setVisits(visitsRes.data || []);
-        };
         fetchAllData();
 
          const channel = client.channel('agenda-visits-channel')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'visits' }, fetchAllData)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'visits', filter: `agent_id=eq.${profile.id}` }, (payload) => {
+                 fetchAllData();
+            })
             .subscribe();
 
         return () => { client.removeChannel(channel); };
-    }, [profile, client]);
+    }, [profile, client, fetchAllData]);
 
 
     const weekStart = useMemo(() => startOfWeek(currentDate, { locale: ptBR, weekStartsOn: 1 }), [currentDate]);
@@ -2158,7 +2229,19 @@ const AgendaPage = () => {
         if (error) {
             alert("Erro ao salvar visita: " + error.message);
         } else {
+            // State will be updated by the realtime subscription
             setIsNewEventModalOpen(false);
+        }
+    };
+    
+    const handleDeleteVisit = async (visitId: string) => {
+        if (window.confirm("Tem certeza que deseja cancelar esta visita?")) {
+            handleCloseModal();
+            const { error } = await client.from('visits').delete().eq('id', visitId);
+            if (error) {
+                alert("Falha ao cancelar a visita: " + error.message);
+            }
+            // State will be updated by the realtime subscription
         }
     };
 
@@ -2233,7 +2316,7 @@ const AgendaPage = () => {
 
             {/* Event Detail Modal */}
             {selectedEvent && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50" onClick={handleCloseModal}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4" onClick={handleCloseModal}>
                      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-xl font-bold text-brand-text">{selectedEvent.title}</h2>
@@ -2241,9 +2324,14 @@ const AgendaPage = () => {
                         </div>
                         <div className="space-y-4 text-brand-text-light">
                             <div className="flex items-center gap-3"><ClockIcon className="h-5 w-5"/><span>{format(new Date(selectedEvent.start), 'dd/MM/yyyy HH:mm', { locale: ptBR })} - {format(new Date(selectedEvent.end), 'HH:mm', { locale: ptBR })}</span></div>
-                            <div className="flex items-center gap-3"><UsersIcon className="h-5 w-5"/><span>Lead: {leads.find(l => l.id === selectedEvent.lead_id)?.name}</span></div>
-                            <div className="flex items-center gap-3"><BuildingIcon className="h-5 w-5"/><span>Imóvel: {properties.find(p => p.id === selectedEvent.property_id)?.title}</span></div>
-                            <div className="flex items-center gap-3"><StarIcon className="h-5 w-5"/><span>Corretor: {agents.find(a => a.id === selectedEvent.agent_id)?.name}</span></div>
+                            <div className="flex items-center gap-3"><UsersIcon className="h-5 w-5"/><span>Lead: {leads.find(l => l.id === selectedEvent.lead_id)?.name || 'N/A'}</span></div>
+                            <div className="flex items-center gap-3"><BuildingIcon className="h-5 w-5"/><span>Imóvel: {properties.find(p => p.id === selectedEvent.property_id)?.title || 'N/A'}</span></div>
+                            <div className="flex items-center gap-3"><StarIcon className="h-5 w-5"/><span>Corretor: {agents.find(a => a.id === selectedEvent.agent_id)?.name || 'N/A'}</span></div>
+                        </div>
+                         <div className="mt-6 pt-4 border-t flex justify-end">
+                            <button onClick={() => handleDeleteVisit(selectedEvent.id)} className="bg-red-100 text-red-700 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-red-200 transition-colors text-sm font-medium">
+                                <TrashIcon className="h-4 w-4" /> Cancelar Visita
+                            </button>
                         </div>
                     </div>
                 </div>
