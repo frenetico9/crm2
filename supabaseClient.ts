@@ -1,7 +1,6 @@
 
-
 import { createClient } from '@supabase/supabase-js'
-import type { Agent, Lead, Notification, Property, Visit, PropertyType, PropertyStatus, LeadStatus, WhatsappMessage } from './types'
+import type { Agent, Lead, Notification, Property, Visit } from './types'
 
 // By making the Insert and Update types explicit, we resolve the
 // "Type instantiation is excessively deep" error that was occurring due to
@@ -11,126 +10,28 @@ export interface Database {
     Tables: {
       agents: {
         Row: Agent
-        Insert: {
-          name: string;
-          avatar_url: string;
-          phone?: string;
-        }
-        Update: {
-          name?: string;
-          avatar_url?: string;
-          phone?: string;
-        }
+        Insert: Omit<Agent, 'id' | 'email'>
+        Update: Partial<Omit<Agent, 'id' | 'email'>>
       }
       properties: {
         Row: Property
-        Insert: {
-          title: string;
-          type: PropertyType;
-          description: string;
-          location: {
-            bairro: string;
-            cidade: string;
-          };
-          price: number;
-          area: number;
-          bedrooms: number;
-          bathrooms: number;
-          garage_spaces: number;
-          agent_id: string;
-          images: string[];
-          status: PropertyStatus;
-        }
-        Update: {
-          title?: string;
-          type?: PropertyType;
-          description?: string;
-          location?: {
-            bairro: string;
-            cidade: string;
-          };
-          price?: number;
-          area?: number;
-          bedrooms?: number;
-          bathrooms?: number;
-          garage_spaces?: number;
-          agent_id?: string;
-          images?: string[];
-          status?: PropertyStatus;
-        }
+        Insert: Omit<Property, 'id' | 'created_at'>
+        Update: Partial<Omit<Property, 'id' | 'created_at'>>
       }
       leads: {
         Row: Lead
-        Insert: {
-          name: string;
-          email: string;
-          phone: string;
-          agent_id: string;
-          status: LeadStatus;
-          score: number;
-          last_contact: string;
-          interest: {
-            type: PropertyType[];
-            bairro: string[];
-            priceRange: [number, number];
-          };
-          whatsapp_history?: WhatsappMessage[];
-        }
-        Update: {
-          name?: string;
-          email?: string;
-          phone?: string;
-          agent_id?: string;
-          status?: LeadStatus;
-          score?: number;
-          last_contact?: string;
-          interest?: {
-            type: PropertyType[];
-            bairro: string[];
-            priceRange: [number, number];
-          };
-          whatsapp_history?: WhatsappMessage[];
-        }
+        Insert: Omit<Lead, 'id' | 'created_at'>
+        Update: Partial<Omit<Lead, 'id' | 'created_at'>>
       }
       visits: {
         Row: Visit
-        Insert: {
-          title: string;
-          start: string;
-          end: string;
-          agent_id: string;
-          lead_id: string;
-          property_id: string;
-        }
-        Update: {
-          title?: string;
-          start?: string;
-          end?: string;
-          agent_id?: string;
-          lead_id?: string;
-          property_id?: string;
-        }
+        Insert: Omit<Visit, 'id' | 'created_at'>
+        Update: Partial<Omit<Visit, 'id' | 'created_at'>>
       }
       notifications: {
         Row: Notification
-        Insert: {
-          user_id: string;
-          type: 'new_lead' | 'visit_reminder' | 'message';
-          title: string;
-          content: string;
-          timestamp: string;
-          read: boolean;
-          link?: string;
-        }
-        Update: {
-          user_id?: string;
-          type?: 'new_lead' | 'visit_reminder' | 'message';
-          title?: string;
-          content?: string;
-          timestamp?: string;
-          read?: boolean;
-          link?: string;
-        }
+        Insert: Omit<Notification, 'id' | 'created_at'>
+        Update: Partial<Omit<Notification, 'id' | 'created_at'>>
       }
     }
     Views: {
