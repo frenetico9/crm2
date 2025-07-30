@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useCallback, createContext, useContext, useRef } from 'react';
 import { Routes, Route, Link, useParams, useNavigate, useLocation, Navigate, useSearchParams } from 'react-router-dom';
 import {
@@ -1839,59 +1838,61 @@ const ChartContainer: React.FC<{ title: string; children: React.ReactNode }> = (
 
 const ConversionFunnelChart: React.FC<{ data: { stage: LeadStatus; value: number }[] }> = ({ data }) => {
     const navigate = useNavigate();
-    if (!data.length) return <div className="flex items-center justify-center h-full text-gray-500">Dados insuficientes.</div>;
-
-    const filteredData = data.filter(d => d.value > 0 && d.stage !== LeadStatus.Perdido);
-    const maxValue = filteredData.length > 0 ? filteredData[0].value : 0;
-    const colors = ['#0052CC', '#2684FF', '#57A8FF', '#8EC9FF'];
-
-    if (maxValue === 0) return <div className="flex items-center justify-center h-full text-gray-500">Nenhum lead no funil.</div>;
-
-    const funnelSegments = filteredData.map((item, index) => {
-        const nextItem = filteredData[index + 1] || { value: 0 };
-        const topWidth = (item.value / maxValue) * 100;
-        const bottomWidth = (nextItem.value / maxValue) * 100;
-        
-        const topOffset = (100 - topWidth) / 2;
-        const bottomOffset = (100 - bottomWidth) / 2;
-
-        const style = {
-            '--offset-top': `${topOffset}%`,
-            '--offset-bottom': `${bottomOffset}%`,
-            '--bg-color': colors[index % colors.length]
-        } as React.CSSProperties;
-        
-        return { ...item, style, conversion: nextItem.value > 0 ? (nextItem.value / item.value) * 100 : null };
+    const funnelStagesOrder = [LeadStatus.Novo, LeadStatus.EmNegociacao, LeadStatus.Visitou, LeadStatus.Fechado];
+    
+    // Ensure stages are ordered correctly and have a value, even if 0
+    const orderedData = funnelStagesOrder.map(stageName => {
+        const found = data.find(d => d.stage === stageName);
+        return found || { stage: stageName, value: 0 };
     });
 
+    const totalLeadsAtStart = orderedData[0]?.value || 0;
+    const colors = ['#0052CC', '#2684FF', '#57A8FF', '#8EC9FF'];
+
+    if (totalLeadsAtStart === 0) {
+        return <div className="flex items-center justify-center h-full text-gray-500">Nenhum lead no funil.</div>;
+    }
+
+    let lastValue = totalLeadsAtStart;
+
     return (
-        <div className="flex flex-col items-center justify-center w-full h-full" style={{minHeight: '320px'}}>
-             <style>{`
-                .funnel-segment {
-                    clip-path: polygon(var(--offset-top) 0, calc(100% - var(--offset-top)) 0, calc(100% - var(--offset-bottom)) 100%, var(--offset-bottom) 100%);
-                    background-color: var(--bg-color);
-                }
-             `}</style>
-            {funnelSegments.map((item, index) => (
-                <React.Fragment key={item.stage}>
+        <div className="w-full py-4 px-2 space-y-2">
+            {orderedData.map((item, index) => {
+                if (item.value === 0 && index > 0 && (orderedData[index-1]?.value === 0)) return null; 
+
+                const conversionRate = lastValue > 0 ? (item.value / lastValue) * 100 : 0;
+                const widthPercentage = totalLeadsAtStart > 0 ? (item.value / totalLeadsAtStart) * 90 + 10 : 0; // min 10% width
+                
+                const segment = (
                     <div
-                        className="w-full h-16 funnel-segment transition-transform duration-300 hover:scale-105 cursor-pointer flex items-center justify-center text-white"
-                        style={item.style}
-                        onClick={() => navigate(`/leads?status=${item.stage}`)}
+                        key={item.stage}
+                        className="w-full flex flex-col items-center"
                     >
-                         <div className="flex justify-between items-center w-full px-4 sm:px-8">
-                            <span className="font-semibold text-sm sm:text-base">{item.stage}</span>
-                            <span className="font-bold text-lg sm:text-xl">{item.value}</span>
+                         {index > 0 && lastValue > 0 && (
+                            <div className="flex flex-col items-center text-xs text-gray-500 my-1">
+                               <ArrowDownIcon className="h-4 w-4" />
+                               <span>{conversionRate.toFixed(1)}%</span>
+                            </div>
+                        )}
+                        <div
+                            onClick={() => navigate(`/leads?status=${item.stage}`)}
+                            className="h-14 rounded-md shadow-sm text-white flex items-center justify-between px-4 cursor-pointer transition-transform hover:scale-105"
+                            style={{ backgroundColor: colors[index % colors.length], width: `${widthPercentage}%` }}
+                        >
+                            <span className="font-semibold">{item.stage}</span>
+                            <span className="text-2xl font-bold">{item.value}</span>
                         </div>
                     </div>
-                    {item.conversion !== null && (
-                        <div className="flex items-center justify-center h-8 text-xs text-gray-500 font-medium">
-                            <ArrowDownIcon className="h-4 w-4 mr-1"/>
-                            <span>Conversão de {item.conversion.toFixed(1)}%</span>
-                        </div>
-                    )}
-                </React.Fragment>
-            ))}
+                );
+
+                if (item.value > 0) {
+                   lastValue = item.value;
+                } else if (index > 0) {
+                   lastValue = 0;
+                }
+                
+                return segment;
+            })}
         </div>
     );
 };
@@ -1901,15 +1902,17 @@ const VisitsTrendChart: React.FC<{ data: { day: string; visits: number }[] }> = 
     return (
         <div className="h-80 flex items-end space-x-2 px-4 pt-4">
              {data.map((d, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
-                    <div className="w-full h-full flex items-end">
-                        <div 
-                            className="w-3/4 mx-auto bg-brand-primary rounded-t-md hover:bg-brand-accent transition-all duration-300" 
-                            style={{ height: `${(d.visits / maxValue) * 90}%` }}
-                            title={`${d.visits} visitas`}
-                        >
-                            <div className="text-center text-xs text-white opacity-0 hover:opacity-100 font-bold">{d.visits}</div>
-                        </div>
+                <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group">
+                    <div 
+                        className="w-3/4 mx-auto bg-brand-primary rounded-t-md group-hover:bg-brand-accent transition-all duration-300 flex items-center justify-center relative" 
+                        style={{ height: `${(d.visits / maxValue) * 90}%` }}
+                        title={`${d.visits} visitas`}
+                    >
+                        {d.visits > 0 && (
+                            <span className="text-sm text-white font-bold z-10">
+                                {d.visits}
+                            </span>
+                        )}
                     </div>
                     <div className="text-xs text-brand-text-light mt-2">{d.day}</div>
                 </div>
