@@ -1,145 +1,125 @@
+
 import { createClient } from '@supabase/supabase-js'
 import type { Agent, Lead, Notification, Property, Visit, PropertyType, PropertyStatus, LeadStatus, WhatsappMessage } from './types'
 
 // By creating fully explicit types for database operations, we avoid complex
 // generics like Partial<Omit<T, K>> which can cause the TypeScript compiler
 // to fail with "Type instantiation is excessively deep" errors.
-
-type AgentInsertPayload = {
-  id: string;
-  name: string;
-  email: string;
-  avatar_url: string;
-  phone?: string | null;
-};
-
-type AgentUpdatePayload = {
-  name?: string;
-  avatar_url?: string;
-  phone?: string | null;
-};
-
-type PropertyInsertPayload = {
-  title: string;
-  type: PropertyType;
-  description: string;
-  location: { bairro: string; cidade: string; };
-  price: number;
-  area: number;
-  bedrooms: number;
-  bathrooms: number;
-  garage_spaces: number;
-  agent_id: string;
-  images: string[];
-  status: PropertyStatus;
-};
-
-type PropertyUpdatePayload = {
-    title?: string;
-    type?: PropertyType;
-    description?: string;
-    location?: { bairro: string; cidade: string; };
-    price?: number;
-    area?: number;
-    bedrooms?: number;
-    bathrooms?: number;
-    garage_spaces?: number;
-    agent_id?: string;
-    images?: string[];
-    status?: PropertyStatus;
-};
-
-type LeadInsertPayload = {
-    name: string;
-    email: string;
-    phone: string;
-    agent_id: string;
-    status: LeadStatus;
-    score: number;
-    last_contact: string;
-    interest: { type: PropertyType[]; bairro: string[]; priceRange: [number, number]; };
-    whatsapp_history?: WhatsappMessage[];
-};
-
-type LeadUpdatePayload = {
-    name?: string;
-    email?: string;
-    phone?: string;
-    agent_id?: string;
-    status?: LeadStatus;
-    score?: number;
-    last_contact?: string;
-    interest?: { type: PropertyType[]; bairro: string[]; priceRange: [number, number]; };
-    whatsapp_history?: WhatsappMessage[];
-};
-
-type VisitInsertPayload = {
-    title: string;
-    start: string;
-    end: string;
-    agent_id: string;
-    lead_id: string;
-    property_id: string;
-};
-
-type VisitUpdatePayload = {
-    title?: string;
-    start?: string;
-    end?: string;
-    agent_id?: string;
-    lead_id?: string;
-    property_id?: string;
-};
-
-
-type NotificationInsertPayload = {
-    user_id: string;
-    type: 'new_lead' | 'visit_reminder' | 'message';
-    title: string;
-    content: string;
-    timestamp: string;
-    read: boolean;
-    link?: string;
-};
-
-type NotificationUpdatePayload = {
-    user_id?: string;
-    type?: 'new_lead' | 'visit_reminder' | 'message';
-    title?: string;
-    content?: string;
-    timestamp?: string;
-    read?: boolean;
-    link?: string;
-};
-
+// The payload types have been inlined into the Database interface below.
 
 export interface Database {
   public: {
     Tables: {
       agents: {
         Row: Agent;
-        Insert: AgentInsertPayload;
-        Update: AgentUpdatePayload;
+        Insert: {
+          id: string;
+          name: string;
+          email: string;
+          avatar_url: string;
+          phone?: string | null;
+        };
+        Update: {
+          name?: string;
+          avatar_url?: string;
+          phone?: string | null;
+        };
       };
       properties: {
         Row: Property;
-        Insert: PropertyInsertPayload;
-        Update: PropertyUpdatePayload;
+        Insert: {
+          title: string;
+          type: PropertyType;
+          description: string;
+          location: { bairro: string; cidade: string; };
+          price: number;
+          area: number;
+          bedrooms: number;
+          bathrooms: number;
+          garage_spaces: number;
+          agent_id: string;
+          images: string[];
+          status: PropertyStatus;
+        };
+        Update: {
+            title?: string;
+            type?: PropertyType;
+            description?: string;
+            location?: { bairro: string; cidade: string; };
+            price?: number;
+            area?: number;
+            bedrooms?: number;
+            bathrooms?: number;
+            garage_spaces?: number;
+            agent_id?: string;
+            images?: string[];
+            status?: PropertyStatus;
+        };
       };
       leads: {
         Row: Lead;
-        Insert: LeadInsertPayload;
-        Update: LeadUpdatePayload;
+        Insert: {
+            name: string;
+            email: string;
+            phone: string;
+            agent_id: string;
+            status: LeadStatus;
+            score: number;
+            last_contact: string;
+            interest: { type: PropertyType[]; bairro: string[]; priceRange: [number, number]; };
+            whatsapp_history?: WhatsappMessage[];
+        };
+        Update: {
+            name?: string;
+            email?: string;
+            phone?: string;
+            agent_id?: string;
+            status?: LeadStatus;
+            score?: number;
+            last_contact?: string;
+            interest?: { type: PropertyType[]; bairro: string[]; priceRange: [number, number]; };
+            whatsapp_history?: WhatsappMessage[];
+        };
       };
       visits: {
         Row: Visit;
-        Insert: VisitInsertPayload;
-        Update: VisitUpdatePayload;
+        Insert: {
+            title: string;
+            start: string;
+            end: string;
+            agent_id: string;
+            lead_id: string;
+            property_id: string;
+        };
+        Update: {
+            title?: string;
+            start?: string;
+            end?: string;
+            agent_id?: string;
+            lead_id?: string;
+            property_id?: string;
+        };
       };
       notifications: {
         Row: Notification;
-        Insert: NotificationInsertPayload;
-        Update: NotificationUpdatePayload;
+        Insert: {
+            user_id: string;
+            type: 'new_lead' | 'visit_reminder' | 'message';
+            title: string;
+            content: string;
+            timestamp: string;
+            read: boolean;
+            link?: string;
+        };
+        Update: {
+            user_id?: string;
+            type?: 'new_lead' | 'visit_reminder' | 'message';
+            title?: string;
+            content?: string;
+            timestamp?: string;
+            read?: boolean;
+            link?: string;
+        };
       };
     };
     Views: {
