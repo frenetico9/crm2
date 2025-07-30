@@ -1,64 +1,147 @@
 
+
 import { createClient } from '@supabase/supabase-js'
-import type { Agent, Lead, Notification, Property, Visit } from './types'
+import type { Agent, Lead, Notification, Property, Visit, PropertyType, PropertyStatus, LeadStatus, WhatsappMessage } from './types'
 
-// By making the Insert and Update types explicit with type aliases, we help the
-// TypeScript compiler avoid "Type instantiation is excessively deep" errors that
-// can occur with complex nested generic types like Partial<Omit<...>>.
+// By creating fully explicit types for database operations, we avoid complex
+// generics like Partial<Omit<T, K>> which can cause the TypeScript compiler
+// to fail with "Type instantiation is excessively deep" errors.
 
-// --- Type Aliases for Table Operations ---
+type AgentUpdatePayload = {
+  name?: string;
+  avatar_url?: string;
+  phone?: string | null;
+};
 
-type AgentInsert = Omit<Agent, 'id' | 'email'>;
-type AgentUpdate = Partial<Omit<Agent, 'id' | 'email'>>;
+type PropertyInsertPayload = {
+  title: string;
+  type: PropertyType;
+  description: string;
+  location: { bairro: string; cidade: string; };
+  price: number;
+  area: number;
+  bedrooms: number;
+  bathrooms: number;
+  garage_spaces: number;
+  agent_id: string;
+  images: string[];
+  status: PropertyStatus;
+};
 
-type PropertyInsert = Omit<Property, 'id' | 'created_at'>;
-type PropertyUpdate = Partial<Omit<Property, 'id' | 'created_at'>>;
+type PropertyUpdatePayload = {
+    title?: string;
+    type?: PropertyType;
+    description?: string;
+    location?: { bairro: string; cidade: string; };
+    price?: number;
+    area?: number;
+    bedrooms?: number;
+    bathrooms?: number;
+    garage_spaces?: number;
+    agent_id?: string;
+    images?: string[];
+    status?: PropertyStatus;
+};
 
-type LeadInsert = Omit<Lead, 'id' | 'created_at'>;
-type LeadUpdate = Partial<Omit<Lead, 'id' | 'created_at'>>;
+type LeadInsertPayload = {
+    name: string;
+    email: string;
+    phone: string;
+    agent_id: string;
+    status: LeadStatus;
+    score: number;
+    last_contact: string;
+    interest: { type: PropertyType[]; bairro: string[]; priceRange: [number, number]; };
+    whatsapp_history?: WhatsappMessage[];
+};
 
-type VisitInsert = Omit<Visit, 'id' | 'created_at'>;
-type VisitUpdate = Partial<Omit<Visit, 'id' | 'created_at'>>;
+type LeadUpdatePayload = {
+    name?: string;
+    email?: string;
+    phone?: string;
+    agent_id?: string;
+    status?: LeadStatus;
+    score?: number;
+    last_contact?: string;
+    interest?: { type: PropertyType[]; bairro: string[]; priceRange: [number, number]; };
+    whatsapp_history?: WhatsappMessage[];
+};
 
-type NotificationInsert = Omit<Notification, 'id' | 'created_at'>;
-type NotificationUpdate = Partial<Omit<Notification, 'id' | 'created_at'>>;
+type VisitInsertPayload = {
+    title: string;
+    start: string;
+    end: string;
+    agent_id: string;
+    lead_id: string;
+    property_id: string;
+};
+
+type VisitUpdatePayload = {
+    title?: string;
+    start?: string;
+    end?: string;
+    agent_id?: string;
+    lead_id?: string;
+    property_id?: string;
+};
+
+
+type NotificationInsertPayload = {
+    user_id: string;
+    type: 'new_lead' | 'visit_reminder' | 'message';
+    title: string;
+    content: string;
+    timestamp: string;
+    read: boolean;
+    link?: string;
+};
+
+type NotificationUpdatePayload = {
+    user_id?: string;
+    type?: 'new_lead' | 'visit_reminder' | 'message';
+    title?: string;
+    content?: string;
+    timestamp?: string;
+    read?: boolean;
+    link?: string;
+};
 
 
 export interface Database {
   public: {
     Tables: {
       agents: {
-        Row: Agent
-        Insert: AgentInsert
-        Update: AgentUpdate
-      }
+        Row: Agent;
+        Insert: never; // Inserts are likely handled by a database trigger on auth.users
+        Update: AgentUpdatePayload;
+      };
       properties: {
-        Row: Property
-        Insert: PropertyInsert
-        Update: PropertyUpdate
-      }
+        Row: Property;
+        Insert: PropertyInsertPayload;
+        Update: PropertyUpdatePayload;
+      };
       leads: {
-        Row: Lead
-        Insert: LeadInsert
-        Update: LeadUpdate
-      }
+        Row: Lead;
+        Insert: LeadInsertPayload;
+        Update: LeadUpdatePayload;
+      };
       visits: {
-        Row: Visit
-        Insert: VisitInsert
-        Update: VisitUpdate
-      }
+        Row: Visit;
+        Insert: VisitInsertPayload;
+        Update: VisitUpdatePayload;
+      };
       notifications: {
-        Row: Notification
-        Insert: NotificationInsert
-        Update: NotificationUpdate
-      }
-    }
+        Row: Notification;
+        Insert: NotificationInsertPayload;
+        Update: NotificationUpdatePayload;
+      };
+    };
     Views: {
-      [_: string]: never
-    }
+      [_: string]: never;
+    };
     Functions: {
-      [_: string]: never
-    }
+      [_: string]: never;
+    };
   }
 }
 
