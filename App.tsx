@@ -79,45 +79,68 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
             setLoading(true);
             const supabaseClient = await createSupabaseClient();
             if (!supabaseClient) {
-                 console.error("Falha crítica: Cliente Supabase não pôde ser criado.");
-                 setLoading(false);
-                 return;
+                console.error("Falha crítica: Cliente Supabase não pôde ser criado.");
+                setLoading(false);
+                return;
             }
             setClient(supabaseClient);
 
+            // Helper function to fetch profile with retry logic to handle potential trigger delays
+            const fetchProfileWithRetry = async (user: User) => {
+                let agentProfile = null;
+                let attempts = 0;
+                while (!agentProfile && attempts < 5) {
+                    const { data, error } = await supabaseClient
+                        .from('agents')
+                        .select('*')
+                        .eq('id', user.id)
+                        .single();
+
+                    // Don't retry on actual errors, only if no row is found
+                    if (error && error.code !== 'PGRST116') { // PGRST116: "The result contains 0 rows"
+                        console.error("Error fetching profile:", error);
+                        break; 
+                    }
+
+                    agentProfile = data;
+                    if (!agentProfile) {
+                        attempts++;
+                        console.log(`Profile not found for user ${user.id}. Retrying... (Attempt ${attempts})`);
+                        // Exponential backoff
+                        await new Promise(resolve => setTimeout(resolve, 500 * attempts));
+                    }
+                }
+                return agentProfile as Agent | null;
+            };
+
+            // Initial session check
             const { data: { session } } = await supabaseClient.auth.getSession();
             setSession(session);
-             if (session?.user) {
-                const { data: agentProfile } = await supabaseClient
-                    .from('agents')
-                    .select('*')
-                    .eq('id', session.user.id)
-                    .single();
-                setProfile(agentProfile as Agent | null);
+            if (session?.user) {
+                const profileData = await fetchProfileWithRetry(session.user);
+                setProfile(profileData);
             }
             setLoading(false);
 
+            // Auth state change listener
             const { data: { subscription } } = supabaseClient.auth.onAuthStateChange(async (_event, session) => {
                 setSession(session);
-                 if (session?.user) {
+                if (session?.user) {
                     setLoading(true);
-                    const { data: agentProfile } = await supabaseClient
-                        .from('agents')
-                        .select('*')
-                        .eq('id', session.user.id)
-                        .single();
-                    setProfile(agentProfile as Agent | null);
+                    const profileData = await fetchProfileWithRetry(session.user);
+                    setProfile(profileData);
                     setLoading(false);
                 } else {
                     setProfile(null);
+                    setLoading(false);
                 }
             });
 
             return () => subscription.unsubscribe();
         };
-        
+
         const unsubscribePromise = initialize();
-        
+
         return () => {
             unsubscribePromise.then(unsubscribe => unsubscribe && unsubscribe());
         }
