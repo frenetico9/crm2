@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useMemo, useEffect, useCallback, createContext, useContext, useRef } from 'react';
 import { Routes, Route, Link, useParams, useNavigate, useLocation, Navigate, useSearchParams } from 'react-router-dom';
 import {
@@ -100,14 +101,12 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
             const { data: { subscription } } = supabaseClient.auth.onAuthStateChange(async (_event, session) => {
                 setSession(session);
                  if (session?.user) {
-                    setLoading(true);
                     const { data: agentProfile } = await supabaseClient
                         .from('agents')
                         .select('*')
                         .eq('id', session.user.id)
                         .single();
                     setProfile(agentProfile as Agent | null);
-                    setLoading(false);
                 } else {
                     setProfile(null);
                 }
@@ -129,11 +128,7 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
         }
     };
     
-    if (loading) {
-        return <div className="flex justify-center items-center h-screen bg-brand-secondary text-brand-text">Conectando...</div>;
-    }
-
-    if (!client) {
+    if (!client && !loading) {
         return <div className="flex justify-center items-center h-screen bg-red-100 text-red-700">Erro: Não foi possível conectar ao servidor. Verifique a configuração e a conexão.</div>;
     }
     
@@ -2388,7 +2383,7 @@ const AgendaPage = () => {
 
 // --- LAYOUT FOR AUTHENTICATED APP ---
 const MainLayout = () => {
-    const { session, loading } = useAuth();
+    const { session, profile, loading } = useAuth();
     const location = useLocation();
 
     if (loading) {
@@ -2397,6 +2392,15 @@ const MainLayout = () => {
 
     if (!session) {
         return <Navigate to="/login" state={{ from: location }} replace />;
+    }
+
+    if (!profile) {
+        return (
+             <div className="flex flex-col justify-center items-center h-screen bg-brand-secondary text-brand-text">
+                <p className="text-xl font-semibold">Carregando perfil...</p>
+                <p className="text-gray-500 mt-2">Um momento, estamos preparando tudo para você.</p>
+            </div>
+        );
     }
 
     return (
