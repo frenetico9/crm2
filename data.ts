@@ -1,7 +1,5 @@
-
-
-import { Agent, Property, Lead, LeadStatus, PropertyStatus, PropertyType, Interaction, Visit } from './types';
-import { addDays } from 'date-fns';
+import { Agent, Property, Lead, LeadStatus, PropertyStatus, PropertyType, Interaction, Visit, Notification } from './types';
+import { addDays, formatISO } from 'date-fns';
 
 const _startOfWeek = (date: Date, options?: { weekStartsOn?: number }): Date => {
     const d = new Date(date);
@@ -25,16 +23,17 @@ const _setMinutes = (date: Date | number, value: number): Date => {
   return d;
 };
 
-export const agents: Agent[] = [
+export const initialAgents: Agent[] = [
   { id: 'agent-1', name: 'Carlos Ferreira', email: 'carlos@corretor.ai', password: 'password123', avatarUrl: 'https://i.pravatar.cc/150?u=agent-1', phone: '(11) 99999-1111' },
   { id: 'agent-2', name: 'Ana Souza', email: 'ana@corretor.ai', password: 'password123', avatarUrl: 'https://i.pravatar.cc/150?u=agent-2', phone: '(11) 99999-2222' },
   { id: 'agent-3', name: 'Ricardo Lima', email: 'ricardo@corretor.ai', password: 'password123', avatarUrl: 'https://i.pravatar.cc/150?u=agent-3', phone: '(11) 99999-3333' },
 ];
 
-export const properties: Property[] = [
+export const initialProperties: Property[] = [
   {
     id: 'prop-1',
     title: 'Apartamento Moderno no Centro',
+    description: 'Este apartamento moderno de 2 quartos no coração do centro da cidade oferece vistas deslumbrantes e acabamentos de alta qualidade. A poucos passos de restaurantes, lojas e transportes públicos. Ideal para quem busca um estilo de vida urbano e sofisticado.',
     type: PropertyType.Apartamento,
     location: { bairro: 'Centro', cidade: 'São Paulo' },
     price: 850000,
@@ -43,12 +42,13 @@ export const properties: Property[] = [
     bathrooms: 2,
     garageSpaces: 1,
     agentId: 'agent-1',
-    images: ['https://picsum.photos/seed/prop1/800/600', 'https://picsum.photos/seed/prop1-2/800/600'],
+    images: ['https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?q=80&w=2070&auto=format&fit=crop', 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?q=80&w=2070&auto=format&fit=crop'],
     status: PropertyStatus.Disponivel,
   },
   {
     id: 'prop-2',
     title: 'Casa Espaçosa com Quintal',
+    description: 'Uma casa de família excepcional com 4 suítes, piscina privativa e um vasto quintal. Localizada no prestigiado bairro dos Jardins, esta propriedade combina luxo, conforto e segurança. Perfeita para entretenimento e vida em família.',
     type: PropertyType.Casa,
     location: { bairro: 'Jardins', cidade: 'São Paulo' },
     price: 2500000,
@@ -57,12 +57,13 @@ export const properties: Property[] = [
     bathrooms: 5,
     garageSpaces: 4,
     agentId: 'agent-2',
-    images: ['https://picsum.photos/seed/prop2/800/600', 'https://picsum.photos/seed/prop2-2/800/600'],
+    images: ['https://images.unsplash.com/photo-1570129477492-45c003edd2be?q=80&w=2070&auto=format&fit=crop', 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?q=80&w=2070&auto=format&fit=crop'],
     status: PropertyStatus.Disponivel,
   },
   {
     id: 'prop-3',
     title: 'Sala Comercial na Av. Paulista',
+    description: 'Escritório comercial premium em um dos endereços mais cobiçados de São Paulo. Com 120m² de espaço flexível, duas salas de reunião e vistas para a Avenida Paulista, é a localização ideal para sua empresa prosperar.',
     type: PropertyType.SalaComercial,
     location: { bairro: 'Bela Vista', cidade: 'São Paulo' },
     price: 1200000,
@@ -71,12 +72,13 @@ export const properties: Property[] = [
     bathrooms: 2,
     garageSpaces: 2,
     agentId: 'agent-1',
-    images: ['https://picsum.photos/seed/prop3/800/600'],
+    images: ['https://images.unsplash.com/photo-1521737604893-d14cc237f11d?q=80&w=1784&auto=format&fit=crop'],
     status: PropertyStatus.EmNegociacao,
   },
   {
     id: 'prop-4',
     title: 'Apartamento Aconchegante em Pinheiros',
+    description: 'Charmoso apartamento de 3 quartos no vibrante bairro de Pinheiros. Possui uma varanda gourmet e áreas comuns completas, incluindo academia e piscina. A vida que você sempre sonhou, perto de tudo que importa.',
     type: PropertyType.Apartamento,
     location: { bairro: 'Pinheiros', cidade: 'São Paulo' },
     price: 1100000,
@@ -85,12 +87,13 @@ export const properties: Property[] = [
     bathrooms: 2,
     garageSpaces: 2,
     agentId: 'agent-3',
-    images: ['https://picsum.photos/seed/prop4/800/600'],
+    images: ['https://images.unsplash.com/photo-1493809842364-78817add7ffb?q=80&w=2070&auto=format&fit=crop'],
     status: PropertyStatus.Disponivel,
   },
    {
     id: 'prop-5',
     title: 'Casa Térrea em Moema',
+    description: 'Linda casa térrea totalmente reformada em Moema. Com 3 suítes e um design de interiores impecável, esta casa oferece praticidade e elegância. O espaço gourmet integrado ao jardim é um convite para momentos inesquecíveis.',
     type: PropertyType.Casa,
     location: { bairro: 'Moema', cidade: 'São Paulo' },
     price: 3200000,
@@ -99,12 +102,13 @@ export const properties: Property[] = [
     bathrooms: 4,
     garageSpaces: 3,
     agentId: 'agent-2',
-    images: ['https://picsum.photos/seed/prop5/800/600'],
+    images: ['https://images.unsplash.com/photo-1512917774080-9991f1c4c750?q=80&w=2070&auto=format&fit=crop'],
     status: PropertyStatus.Vendido,
   },
   {
     id: 'prop-6',
     title: 'Terreno Plano em Interlagos',
+    description: 'Excelente oportunidade de investimento. Terreno plano de 500m² em localização estratégica em Interlagos, próximo ao autódromo. Perfeito para construir a casa dos seus sonhos ou para empreendimentos comerciais.',
     type: PropertyType.Terreno,
     location: { bairro: 'Interlagos', cidade: 'São Paulo' },
     price: 950000,
@@ -113,12 +117,12 @@ export const properties: Property[] = [
     bathrooms: 0,
     garageSpaces: 0,
     agentId: 'agent-3',
-    images: ['https://picsum.photos/seed/prop6/800/600'],
+    images: ['https://images.unsplash.com/photo-1599736377313-de123f413345?q=80&w=1932&auto=format&fit=crop'],
     status: PropertyStatus.Disponivel,
   },
 ];
 
-export const leads: Lead[] = [
+export const initialLeads: Lead[] = [
   {
     id: 'lead-1',
     name: 'Mariana Costa',
@@ -133,6 +137,11 @@ export const leads: Lead[] = [
       bairro: ['Centro', 'Pinheiros'],
       priceRange: [800000, 1200000],
     },
+    whatsappHistory: [
+        { id: 'msg-1-1', content: 'Olá Mariana, sou o Carlos, seu corretor. Vi seu interesse no apartamento do Centro.', sender: 'agent', timestamp: addDays(new Date(), -2).toISOString(), status: 'read' },
+        { id: 'msg-1-2', content: 'Oi, Carlos! Tudo bem? Sim, gostei bastante dele.', sender: 'lead', timestamp: addDays(new Date(), -2).toISOString(), status: 'delivered' },
+        { id: 'msg-1-3', content: 'Que ótimo! Ele está disponível para visita. Gostaria de agendar um horário para conhecê-lo esta semana?', sender: 'agent', timestamp: addDays(new Date(), -1).toISOString(), status: 'delivered' },
+      ]
   },
   {
     id: 'lead-2',
@@ -148,6 +157,10 @@ export const leads: Lead[] = [
       bairro: ['Jardins', 'Moema'],
       priceRange: [2000000, 3500000],
     },
+     whatsappHistory: [
+        { id: 'msg-2-1', content: 'Olá João Pedro, aqui é a Ana. Recebi seu contato sobre a casa nos Jardins.', sender: 'agent', timestamp: addDays(new Date(), -3).toISOString(), status: 'read' },
+        { id: 'msg-2-2', content: 'Olá Ana, obrigado por retornar. Tenho muito interesse, parece incrível!', sender: 'lead', timestamp: addDays(new Date(), -3).toISOString(), status: 'delivered' },
+    ]
   },
   {
     id: 'lead-3',
@@ -163,6 +176,9 @@ export const leads: Lead[] = [
       bairro: ['Bela Vista', 'Av. Paulista'],
       priceRange: [1000000, 1500000],
     },
+    whatsappHistory: [
+        { id: 'msg-3-1', content: 'Beatriz, passando para agradecer a visita à sala comercial hoje. O que achou?', sender: 'agent', timestamp: addDays(new Date(), -5).toISOString(), status: 'sent' },
+    ]
   },
     {
     id: 'lead-4',
@@ -196,7 +212,7 @@ export const leads: Lead[] = [
   }
 ];
 
-export const interactions: Interaction[] = [
+export const initialInteractions: Interaction[] = [
     { id: 'int-1', type: 'WhatsApp', date: '2024-07-28', content: 'Olá Mariana, recebi seu contato. Gostaria de agendar uma conversa?' },
     { id: 'int-2', type: 'Email', date: '2024-07-27', content: 'Envio de catálogo de imóveis na região dos Jardins.'},
     { id: 'int-3', type: 'Ligação', date: '2024-07-25', content: 'Conversamos sobre a proposta da sala comercial. Lead ficou de pensar.'},
@@ -205,7 +221,7 @@ export const interactions: Interaction[] = [
 const today = new Date();
 const weekStart = _startOfWeek(today, { weekStartsOn: 1 });
 
-export const visits: Visit[] = [
+export const initialVisits: Visit[] = [
     {
         id: 'visit-1',
         title: 'Visita com Mariana Costa',
@@ -242,4 +258,34 @@ export const visits: Visit[] = [
         leadId: 'lead-4',
         propertyId: 'prop-4'
     },
+];
+
+export const initialNotifications: Notification[] = [
+    {
+        id: 'notif-1',
+        type: 'new_lead',
+        title: 'Novo Lead Atribuído',
+        content: 'O lead "Mariana Costa" foi atribuído a você.',
+        timestamp: formatISO(addDays(new Date(), -1)),
+        read: false,
+        link: '/leads/lead-1'
+    },
+    {
+        id: 'notif-2',
+        type: 'visit_reminder',
+        title: 'Lembrete de Visita',
+        content: 'Você tem uma visita agendada com "João Pedro Alves" amanhã às 14:30.',
+        timestamp: formatISO(new Date()),
+        read: false,
+        link: '/agenda'
+    },
+    {
+        id: 'notif-3',
+        type: 'message',
+        title: 'Nova Mensagem de WhatsApp',
+        content: '"Beatriz Martins" respondeu à sua mensagem.',
+        timestamp: formatISO(new Date()),
+        read: true,
+        link: '/whatsapp'
+    }
 ];

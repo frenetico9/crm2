@@ -29,9 +29,10 @@ export interface Agent {
 }
 
 export interface Property {
-  id: string;
+  id:string;
   title: string;
   type: PropertyType;
+  description: string;
   location: {
     bairro: string;
     cidade: string;
@@ -44,6 +45,14 @@ export interface Property {
   agentId: string;
   images: string[];
   status: PropertyStatus;
+}
+
+export interface WhatsappMessage {
+  id: string;
+  content: string;
+  timestamp: string; // ISO string
+  sender: 'agent' | 'lead';
+  status: 'sent' | 'delivered' | 'read';
 }
 
 export interface Lead {
@@ -60,6 +69,7 @@ export interface Lead {
     bairro: string[];
     priceRange: [number, number];
   };
+  whatsappHistory?: WhatsappMessage[];
 }
 
 export interface Interaction {
@@ -77,4 +87,14 @@ export interface Visit {
   agentId: string;
   leadId: string;
   propertyId: string;
+}
+
+export interface Notification {
+  id: string;
+  type: 'new_lead' | 'visit_reminder' | 'message';
+  title: string;
+  content: string;
+  timestamp: string; // ISO string
+  read: boolean;
+  link?: string;
 }

@@ -1,9 +1,5 @@
-
-
-
-
 import React, { useState, useMemo, useEffect, useCallback, createContext, useContext, useRef } from 'react';
-import { Routes, Route, Link, useParams, useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { Routes, Route, Link, useParams, useNavigate, useLocation, Navigate, useSearchParams } from 'react-router-dom';
 import {
     format,
     getDay,
@@ -12,13 +8,17 @@ import {
     endOfWeek,
     eachDayOfInterval,
     isToday,
-    isSameDay
+    isSameDay,
+    isYesterday,
+    isThisYear,
+    parseISO,
+    formatDistanceToNow,
 } from 'date-fns';
 import { ptBR } from 'https://esm.sh/date-fns@^3.6.0/locale/pt-BR';
-import { agents as mockAgents, properties as mockProperties, leads as mockLeads, interactions as mockInteractions, visits as mockVisits } from './data';
-import type { Lead, Property, Agent, Interaction, Visit } from './types';
+import { initialAgents, initialProperties, initialLeads, initialInteractions, initialVisits, initialNotifications } from './data';
+import type { Lead, Property, Agent, Interaction, Visit, WhatsappMessage, Notification } from './types';
 import { LeadStatus, PropertyStatus, PropertyType } from './types';
-import { getPropertySuggestions } from './geminiService';
+import { getPropertySuggestions, getPropertyDescription, getWhatsappSuggestion } from './geminiService';
 
 // ICONS
 const HomeIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>);
@@ -32,7 +32,7 @@ const ChevronDownIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...pro
 const SearchIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>);
 const PlusIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M12 5v14" /></svg>);
 const StarIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>);
-const BotIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" /><path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" /></svg>);
+const SparklesIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L14.5 9.5 22 12 14.5 14.5 12 22 9.5 14.5 2 12 9.5 9.5 12 2z"/><path d="M5 5L6 7"/><path d="M17 17L18 19"/></svg>);
 const TrendingUpIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>);
 const PieChartIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83" /><path d="M22 12A10 10 0 0 0 12 2v10z" /></svg>);
 const FilterIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>);
@@ -43,8 +43,116 @@ const MailIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmln
 const PhoneIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>);
 const LogOutIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg> );
 const WhatsappIcon = (props: React.SVGProps<SVGSVGElement>) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19.03 4.97a10.01 10.01 0 0 0-14.06 14.06l-1.03 3.98l4.08-1.02a10.01 10.01 0 0 0 14.06-14.06zM8.47 18.53c-1.25 0-2.45-.38-3.47-1.05l-.25-.15l-2.58.65l.66-2.52l-.17-.26a6.97 6.97 0 0 1-1.07-3.69c0-3.86 3.14-7 7-7s7 3.14 7 7c0 3.86-3.14 7-7 7zm4.37-5.1c-.22-.11-.76-.38-1.04-.42c-.28-.04-.48.11-.69.37c-.2.26-.78.97-.96 1.17c-.18.2-.36.22-.66.11c-.3-.11-1.25-.46-2.38-1.47c-.88-.78-1.48-1.75-1.65-2.05c-.17-.3-.02-.46.1-.61c.11-.13.24-.34.37-.51c.12-.17.16-.28.24-.46c.08-.18.04-.34-.02-.45c-.06-.11-.57-1.37-.78-1.87c-.2-.5-.41-.43-.57-.43h-.48c-.16 0-.41.06-.62.3c-.2.24-.78.76-.78 1.85s.8 2.15.91 2.3c.11.15 1.57 2.4 3.8 3.35c.54.23.95.36 1.28.46c.5.15.95.13 1.3.08c.39-.05 1.25-.51 1.42-1c.18-.48.18-.9.13-1c-.05-.1-.18-.16-.4-.27z"></path></svg>);
+const SendIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>;
+const CheckIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>;
+const DoubleCheckIcon = (props: React.SVGProps<SVGSVGElement>) => ( <svg {...props} width="16" height="16" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" fill="none" strokeLinecap="round" strokeLinejoin="round"> <path stroke="none" d="M0 0h24v24H0z" fill="none"/> <path d="M7 12l5 5l10 -10" /> <path d="M2 12l5 5m5 -5l5 -5" /> </svg> );
+const BellIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>;
+const CopyIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>;
+const ListIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>;
+const LayoutGridIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/></svg>;
 
-// AUTHENTICATION
+
+// --- DATA PERSISTENCE & STATE MANAGEMENT ---
+const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] => {
+    const [storedValue, setStoredValue] = useState<T>(() => {
+        try {
+            const item = window.localStorage.getItem(key);
+            return item ? JSON.parse(item, (k, v) => (k === 'start' || k === 'end') && typeof v === 'string' ? parseISO(v) : v) : initialValue;
+        } catch (error) {
+            console.error(error);
+            return initialValue;
+        }
+    });
+
+    const setValue: React.Dispatch<React.SetStateAction<T>> = (value) => {
+        try {
+            const valueToStore = value instanceof Function ? value(storedValue) : value;
+            setStoredValue(valueToStore);
+            window.localStorage.setItem(key, JSON.stringify(valueToStore));
+        } catch (error) {
+            console.error(error);
+        }
+    };
+    return [storedValue, setValue];
+};
+
+interface DataContextType {
+    agents: Agent[];
+    leads: Lead[];
+    properties: Property[];
+    visits: Visit[];
+    notifications: Notification[];
+    interactions: Interaction[];
+    updateLead: (updatedLead: Lead) => void;
+    addLead: (newLead: Lead) => void;
+    updateProperty: (updatedProperty: Property) => void;
+    addProperty: (newProperty: Property) => void;
+    addVisit: (newVisit: Omit<Visit, 'id'>) => void;
+    setNotifications: React.Dispatch<React.SetStateAction<Notification[]>>;
+    updateLeadStatus: (leadId: string, newStatus: LeadStatus) => void;
+    updateWhatsappHistory: (leadId: string, message: WhatsappMessage) => void;
+}
+const DataContext = createContext<DataContextType | null>(null);
+
+export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const [agents] = useState<Agent[]>(initialAgents);
+    const [leads, setLeads] = useLocalStorage<Lead[]>('crm_leads', initialLeads);
+    const [properties, setProperties] = useLocalStorage<Property[]>('crm_properties', initialProperties);
+    const [visits, setVisits] = useLocalStorage<Visit[]>('crm_visits', initialVisits);
+    const [notifications, setNotifications] = useLocalStorage<Notification[]>('crm_notifications', initialNotifications);
+    const [interactions] = useState<Interaction[]>(initialInteractions);
+
+    const updateLead = (updatedLead: Lead) => {
+        setLeads(prev => prev.map(l => l.id === updatedLead.id ? updatedLead : l));
+    };
+
+    const addLead = (newLead: Lead) => {
+        setLeads(prev => [newLead, ...prev]);
+    };
+    
+    const updateLeadStatus = (leadId: string, newStatus: LeadStatus) => {
+        setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: newStatus } : l));
+    };
+
+    const updateProperty = (updatedProperty: Property) => {
+        setProperties(prev => prev.map(p => p.id === updatedProperty.id ? updatedProperty : p));
+    };
+
+    const addProperty = (newProperty: Property) => {
+        setProperties(prev => [newProperty, ...prev]);
+    };
+
+    const addVisit = (newVisit: Omit<Visit, 'id'>) => {
+        const visitWithId: Visit = { ...newVisit, id: `visit-${Date.now()}` };
+        setVisits(prev => [...prev, visitWithId]);
+    };
+
+    const updateWhatsappHistory = (leadId: string, message: WhatsappMessage) => {
+        setLeads(prev => prev.map(lead => {
+            if (lead.id === leadId) {
+                return { ...lead, whatsappHistory: [...(lead.whatsappHistory || []), message] };
+            }
+            return lead;
+        }));
+    };
+
+
+    const value = {
+        agents, leads, properties, visits, notifications, interactions,
+        updateLead, addLead, updateProperty, addProperty, addVisit, setNotifications,
+        updateLeadStatus, updateWhatsappHistory
+    };
+
+    return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
+};
+
+const useData = () => {
+    const context = useContext(DataContext);
+    if (!context) throw new Error('useData must be used within a DataProvider');
+    return context;
+};
+
+// --- AUTHENTICATION ---
 interface AuthContextType {
     currentUser: Agent | null;
     agents: Agent[];
@@ -57,29 +165,18 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [currentUser, setCurrentUser] = useState<Agent | null>(null);
-    const [agents, setAgents] = useState<Agent[]>(mockAgents);
+    const [currentUser, setCurrentUser] = useLocalStorage<Agent | null>('crm_currentUser', null);
+    const [agents, setAgents] = useLocalStorage<Agent[]>('crm_agents', initialAgents);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        try {
-            const agentId = localStorage.getItem('agentId');
-            if (agentId) {
-                const agent = agents.find(a => a.id === agentId);
-                setCurrentUser(agent || null);
-            }
-        } catch (error) {
-            console.error("Failed to access localStorage:", error);
-        } finally {
-            setLoading(false);
-        }
-    }, [agents]);
+        setLoading(false);
+    }, [currentUser]);
 
     const login = async (email: string, password: string) => {
         const agent = agents.find(a => a.email === email && a.password === password);
         if (agent) {
             setCurrentUser(agent);
-            localStorage.setItem('agentId', agent.id);
         } else {
             throw new Error('Credenciais inválidas');
         }
@@ -99,23 +196,16 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
         };
         setAgents(prev => [...prev, newAgent]);
         setCurrentUser(newAgent);
-        localStorage.setItem('agentId', newAgent.id);
     };
 
     const logout = () => {
         setCurrentUser(null);
-        localStorage.removeItem('agentId');
     };
     
     const updateCurrentUser = async (updatedData: Partial<Agent>) => {
         if (!currentUser) return;
-        
         const updatedAgent = { ...currentUser, ...updatedData };
-        
-        setAgents(prevAgents => prevAgents.map(agent => 
-            agent.id === currentUser.id ? updatedAgent : agent
-        ));
-        
+        setAgents(prevAgents => prevAgents.map(agent => agent.id === currentUser.id ? updatedAgent : agent ));
         setCurrentUser(updatedAgent);
     };
 
@@ -125,13 +215,142 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 }
 const useAuth = () => {
     const context = useContext(AuthContext);
-    if (!context) {
-        throw new Error('useAuth must be used within an AuthProvider');
-    }
+    if (!context) throw new Error('useAuth must be used within an AuthProvider');
     return context;
 };
 
-// REUSABLE COMPONENTS
+// --- REUSABLE & UI COMPONENTS ---
+
+const useClickOutside = (ref: React.RefObject<HTMLElement>, handler: () => void) => {
+    useEffect(() => {
+        const listener = (event: MouseEvent | TouchEvent) => {
+            if (!ref.current || ref.current.contains(event.target as Node)) {
+                return;
+            }
+            handler();
+        };
+        document.addEventListener('mousedown', listener);
+        document.addEventListener('touchstart', listener);
+        return () => {
+            document.removeEventListener('mousedown', listener);
+            document.removeEventListener('touchstart', listener);
+        };
+    }, [ref, handler]);
+};
+
+const GlobalSearch: React.FC = () => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [results, setResults] = useState<{ leads: Lead[], properties: Property[] }>({ leads: [], properties: [] });
+    const [isOpen, setIsOpen] = useState(false);
+    const { leads, properties } = useData();
+    const navigate = useNavigate();
+    const searchRef = useRef<HTMLDivElement>(null);
+
+    useClickOutside(searchRef, () => setIsOpen(false));
+
+    useEffect(() => {
+        if (searchTerm.length > 1) {
+            const filteredLeads = leads.filter(l => l.name.toLowerCase().includes(searchTerm.toLowerCase()));
+            const filteredProperties = properties.filter(p => p.title.toLowerCase().includes(searchTerm.toLowerCase()));
+            setResults({ leads: filteredLeads, properties: filteredProperties });
+            setIsOpen(true);
+        } else {
+            setIsOpen(false);
+        }
+    }, [searchTerm, leads, properties]);
+    
+    const handleSelect = (path: string) => {
+        setSearchTerm('');
+        setIsOpen(false);
+        navigate(path);
+    };
+
+    return (
+        <div className="relative w-full max-w-xs" ref={searchRef}>
+            <div className="relative">
+                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <input
+                    type="text"
+                    placeholder="Buscar leads, imóveis..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onFocus={() => searchTerm.length > 1 && setIsOpen(true)}
+                    className="w-full pl-10 pr-4 py-2 text-sm rounded-full bg-blue-700 text-white placeholder-gray-300 focus:bg-white focus:text-brand-text focus:outline-none"
+                />
+            </div>
+            {isOpen && (results.leads.length > 0 || results.properties.length > 0) && (
+                 <div className="absolute mt-2 w-full max-h-96 overflow-y-auto bg-white rounded-md shadow-lg z-50 text-brand-text">
+                    {results.leads.length > 0 && (
+                        <div>
+                            <h3 className="px-4 py-2 text-xs font-bold text-gray-500 uppercase">Leads</h3>
+                            <ul>
+                                {results.leads.slice(0, 5).map(lead => (
+                                    <li key={lead.id} onClick={() => handleSelect(`/leads/${lead.id}`)} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">{lead.name}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                    {results.properties.length > 0 && (
+                        <div>
+                            <h3 className="px-4 py-2 text-xs font-bold text-gray-500 uppercase border-t">Imóveis</h3>
+                            <ul>
+                                {results.properties.slice(0, 5).map(prop => (
+                                    <li key={prop.id} onClick={() => handleSelect(`/properties/${prop.id}`)} className="px-4 py-2 hover:bg-gray-100 cursor-pointer">{prop.title}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const NotificationsPanel: React.FC = () => {
+    const { notifications, setNotifications } = useData();
+    const [isOpen, setIsOpen] = useState(false);
+    const navigate = useNavigate();
+    const panelRef = useRef<HTMLDivElement>(null);
+
+    useClickOutside(panelRef, () => setIsOpen(false));
+
+    const unreadCount = notifications.filter(n => !n.read).length;
+
+    const handleNotificationClick = (notification: Notification) => {
+        if (notification.link) navigate(notification.link);
+        setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, read: true } : n));
+        setIsOpen(false);
+    };
+
+    return (
+        <div className="relative" ref={panelRef}>
+            <button onClick={() => setIsOpen(p => !p)} className="relative p-2 rounded-full hover:bg-blue-700 transition-colors">
+                <BellIcon className="h-6 w-6 text-white"/>
+                {unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-brand-primary"></span>
+                )}
+            </button>
+            {isOpen && (
+                <div className="absolute right-0 mt-2 w-80 bg-white rounded-md shadow-lg z-50 text-brand-text">
+                    <div className="p-3 font-bold border-b">Notificações</div>
+                    <ul className="max-h-96 overflow-y-auto">
+                        {notifications.length > 0 ? notifications.map(n => (
+                            <li key={n.id} onClick={() => handleNotificationClick(n)} className={`p-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${!n.read ? 'bg-blue-50' : ''}`}>
+                                <p className="font-semibold">{n.title}</p>
+                                <p className="text-sm text-gray-600">{n.content}</p>
+                                <p className="text-xs text-gray-400 mt-1">{formatDistanceToNow(parseISO(n.timestamp), { addSuffix: true, locale: ptBR })}</p>
+                            </li>
+                        )) : (
+                            <li className="p-4 text-center text-gray-500">Nenhuma notificação.</li>
+                        )}
+                    </ul>
+                </div>
+            )}
+        </div>
+    );
+};
+
+
 const Header = () => {
     const location = useLocation();
     const navigate = useNavigate();
@@ -168,7 +387,7 @@ const Header = () => {
         <Link
             to={path}
             className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                location.pathname === path
+                location.pathname.startsWith(path === '/' ? '/#' : path)
                     ? 'bg-brand-accent text-white'
                     : 'text-gray-300 hover:bg-blue-700 hover:text-white'
             }`}
@@ -182,7 +401,7 @@ const Header = () => {
         <Link
             to={path}
             className={`flex flex-col items-center justify-center w-full pt-2 pb-1 transition-colors ${
-                location.pathname === path ? 'text-brand-primary' : 'text-gray-500'
+                location.pathname.startsWith(path === '/' ? '/#' : path) ? 'text-brand-primary' : 'text-gray-500'
             }`}
         >
             <Icon className="h-6 w-6 mb-1" />
@@ -194,18 +413,22 @@ const Header = () => {
         <>
             {/* Desktop Header */}
             <header className="hidden md:flex bg-brand-primary text-white shadow-lg sticky top-0 z-40">
-                <div className="container mx-auto flex items-center justify-between p-4">
-                    <Link to="/" className="text-xl font-bold flex items-center gap-2">
+                <div className="container mx-auto flex items-center justify-between p-4 gap-4">
+                    <Link to="/" className="text-xl font-bold flex items-center gap-2 flex-shrink-0">
                        <PieChartIcon className="h-7 w-7"/> 
                        <span>Corretor AI</span>
                     </Link>
-                    <nav className="flex items-center space-x-1">
+                     <div className="flex-grow flex justify-center">
+                        <GlobalSearch />
+                    </div>
+                    <nav className="flex items-center space-x-1 flex-shrink-0">
                         {navLinks.map(link => <NavLinkItem key={link.path} {...link} />)}
+                         <NotificationsPanel />
                         {currentUser && (
                              <div className="relative" ref={menuRef}>
-                                <button onClick={() => setIsProfileMenuOpen(p => !p)} className="flex items-center gap-2 ml-4 p-1 rounded-md hover:bg-blue-700 transition-colors">
+                                <button onClick={() => setIsProfileMenuOpen(p => !p)} className="flex items-center gap-2 ml-2 p-1 rounded-md hover:bg-blue-700 transition-colors">
                                     <img src={currentUser.avatarUrl} alt={currentUser.name} className="h-9 w-9 rounded-full border-2 border-brand-accent" />
-                                     <span className="text-white font-medium hidden lg:inline">{currentUser.name}</span>
+                                     <span className="text-white font-medium hidden lg:inline">{currentUser.name.split(' ')[0]}</span>
                                      <ChevronDownIcon className={`h-5 w-5 text-white hidden lg:inline transition-transform ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
                                 </button>
                                 {isProfileMenuOpen && (
@@ -264,12 +487,16 @@ const StatusPill: React.FC<{ status: LeadStatus | PropertyStatus }> = ({ status 
     };
     return <span className={`px-2.5 py-0.5 text-xs font-medium rounded-full ${colorMap[status]}`}>{status}</span>;
 };
-const LeadCard: React.FC<{ lead: Lead; }> = ({ lead }) => {
+const LeadCard: React.FC<{ lead: Lead; isDragging?: boolean; draggableProps?: any; }> = ({ lead, isDragging, draggableProps }) => {
     const { agents } = useAuth();
     const agent = agents.find(a => a.id === lead.agentId);
     const navigate = useNavigate();
     return (
-        <div onClick={() => navigate(`/leads/${lead.id}`)} className="bg-white rounded-lg shadow-md p-4 flex flex-col cursor-pointer transition-shadow hover:shadow-lg">
+        <div 
+             {...draggableProps}
+            onClick={() => navigate(`/leads/${lead.id}`)} 
+            className={`bg-white rounded-lg shadow-md p-4 flex flex-col cursor-pointer transition-shadow hover:shadow-lg ${isDragging ? 'opacity-50 shadow-2xl' : ''}`}
+        >
             <div className="flex items-start justify-between mb-3">
                 <div>
                     <h3 className="font-bold text-brand-text text-lg">{lead.name}</h3>
@@ -282,7 +509,7 @@ const LeadCard: React.FC<{ lead: Lead; }> = ({ lead }) => {
                     <StarIcon className="h-4 w-4 fill-current"/>
                     <span>{lead.score} Pontos</span>
                 </div>
-                <span>Último Contato: {format(new Date(lead.lastContact), 'dd/MM/yy', { locale: ptBR })}</span>
+                <span>Contato: {format(new Date(lead.lastContact), 'dd/MM/yy', { locale: ptBR })}</span>
             </div>
             <div className="border-t pt-3 mt-auto flex items-center justify-between">
                  <div className="flex items-center gap-2">
@@ -297,10 +524,11 @@ const LeadCard: React.FC<{ lead: Lead; }> = ({ lead }) => {
     );
 };
 const PropertyCard: React.FC<{ property: Property }> = ({ property }) => {
+    const navigate = useNavigate();
     const formatPrice = (price: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
 
     return (
-        <div className="bg-white rounded-lg shadow-md overflow-hidden transition-transform duration-300 hover:scale-105 hover:shadow-xl flex flex-col">
+        <div onClick={() => navigate(`/properties/${property.id}`)} className="bg-white rounded-lg shadow-md overflow-hidden transition-transform duration-300 hover:scale-105 hover:shadow-xl flex flex-col cursor-pointer">
             <img src={property.images[0]} alt={property.title} className="w-full h-48 object-cover"/>
             <div className="p-4 flex flex-col flex-grow">
                 <div className="flex justify-between items-start mb-2">
@@ -325,13 +553,13 @@ const PropertyCard: React.FC<{ property: Property }> = ({ property }) => {
     );
 };
 const FilterButton: React.FC<{ label: string; active?: boolean; onClick: () => void }> = ({ label, active, onClick }) => (
-    <button onClick={onClick} className={`px-4 py-2 text-sm font-medium rounded-full transition-colors ${active ? 'bg-brand-primary text-white' : 'bg-white text-brand-text-light hover:bg-gray-100'}`}>
+    <button onClick={onClick} className={`px-4 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap ${active ? 'bg-brand-primary text-white' : 'bg-white text-brand-text-light hover:bg-gray-100'}`}>
         {label}
     </button>
 );
 
 
-// AUTH PAGES & LAYOUT
+// --- AUTH PAGES & LAYOUT ---
 const AuthLayout: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
     <div className="min-h-screen flex flex-col justify-center items-center bg-gray-50 p-4">
         <div className="max-w-md w-full">
@@ -471,7 +699,7 @@ const ForgotPasswordPage = () => {
     );
 };
 
-// PAGES & MAIN LOGIC
+// --- PAGES & MAIN LOGIC ---
 
 const ProfilePage = () => {
     const { currentUser, updateCurrentUser } = useAuth();
@@ -537,31 +765,98 @@ const ProfilePage = () => {
     );
 };
 
+const LeadsKanbanView: React.FC<{ leads: Lead[] }> = ({ leads }) => {
+    const { updateLeadStatus } = useData();
+    const [draggingLeadId, setDraggingLeadId] = useState<string | null>(null);
+
+    const handleDragStart = (e: React.DragEvent<HTMLDivElement>, leadId: string) => {
+        e.dataTransfer.setData('leadId', leadId);
+        setDraggingLeadId(leadId);
+    };
+
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+    };
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>, status: LeadStatus) => {
+        const leadId = e.dataTransfer.getData('leadId');
+        updateLeadStatus(leadId, status);
+        setDraggingLeadId(null);
+    };
+    
+    const columns: LeadStatus[] = [LeadStatus.Novo, LeadStatus.EmNegociacao, LeadStatus.Visitou, LeadStatus.Fechado, LeadStatus.Perdido];
+    const leadsByStatus = useMemo(() => {
+        const grouped: { [key in LeadStatus]?: Lead[] } = {};
+        for (const lead of leads) {
+            if (!grouped[lead.status]) {
+                grouped[lead.status] = [];
+            }
+            grouped[lead.status]!.push(lead);
+        }
+        return grouped;
+    }, [leads]);
+
+    return (
+        <div className="flex gap-4 overflow-x-auto pb-4">
+            {columns.map(status => (
+                <div 
+                    key={status} 
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, status)}
+                    className="w-72 md:w-80 lg:w-96 flex-shrink-0 bg-gray-100 rounded-lg"
+                >
+                    <div className="p-3 font-bold text-brand-text border-b sticky top-0 bg-gray-100 rounded-t-lg">
+                        {status} <span className="text-sm font-normal text-gray-500">{leadsByStatus[status]?.length || 0}</span>
+                    </div>
+                    <div className="p-2 space-y-3 h-full">
+                        {(leadsByStatus[status] || []).map(lead => (
+                            <LeadCard 
+                                key={lead.id} 
+                                lead={lead}
+                                isDragging={draggingLeadId === lead.id}
+                                draggableProps={{
+                                    draggable: true,
+                                    onDragStart: (e: React.DragEvent<HTMLDivElement>) => handleDragStart(e, lead.id)
+                                }}
+                            />
+                        ))}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+};
+
+
 const LeadsListPage = () => {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const { leads } = useData();
     const [searchTerm, setSearchTerm] = useState('');
-    const [activeFilter, setActiveFilter] = useState<LeadStatus | 'Todos'>('Todos');
+    const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+    const [activeFilter, setActiveFilter] = useState<LeadStatus | 'Todos'>(searchParams.get('status') as LeadStatus || 'Todos');
+    
+    useEffect(() => {
+        const status = searchParams.get('status');
+        if (status) {
+            setActiveFilter(status as LeadStatus);
+        }
+    }, [searchParams]);
 
     const filteredLeads = useMemo(() => {
-        return mockLeads
+        return leads
             .filter(lead => activeFilter === 'Todos' || lead.status === activeFilter)
             .filter(lead => lead.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [searchTerm, activeFilter]);
+    }, [leads, searchTerm, activeFilter]);
 
     const filters: (LeadStatus | 'Todos')[] = ['Todos', LeadStatus.Novo, LeadStatus.EmNegociacao, LeadStatus.Visitou, LeadStatus.Fechado, LeadStatus.Perdido];
 
     return (
         <PageContainer title="Leads" actions={
             <div className="flex items-center gap-2 sm:gap-4">
-                <div className="relative">
-                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <input
-                        type="text"
-                        placeholder="Buscar lead..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10 pr-4 py-2 rounded-full border border-gray-300 focus:ring-2 focus:ring-brand-primary focus:outline-none w-40 sm:w-auto"
-                    />
+                 <div className="bg-white rounded-full p-1 border flex items-center">
+                    <button onClick={() => setViewMode('list')} className={`p-2 rounded-full ${viewMode === 'list' ? 'bg-brand-primary text-white' : 'text-gray-500'}`}><ListIcon className="h-5 w-5"/></button>
+                    <button onClick={() => setViewMode('kanban')} className={`p-2 rounded-full ${viewMode === 'kanban' ? 'bg-brand-primary text-white' : 'text-gray-500'}`}><LayoutGridIcon className="h-5 w-5"/></button>
                 </div>
                 <button
                     onClick={() => navigate('/leads/new')}
@@ -572,29 +867,49 @@ const LeadsListPage = () => {
                 </button>
             </div>
         }>
-            <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2">
-                 <FilterIcon className="h-5 w-5 text-brand-text-light flex-shrink-0"/>
-                {filters.map(filter => (
-                    <FilterButton
-                        key={filter}
-                        label={filter}
-                        active={activeFilter === filter}
-                        onClick={() => setActiveFilter(filter)}
+            <div className="flex items-center justify-between gap-2 mb-6 pb-2">
+                 <div className="flex items-center gap-2 overflow-x-auto">
+                    <FilterIcon className="h-5 w-5 text-brand-text-light flex-shrink-0"/>
+                    {filters.map(filter => (
+                        <FilterButton
+                            key={filter}
+                            label={filter}
+                            active={activeFilter === filter}
+                            onClick={() => setActiveFilter(filter)}
+                        />
+                    ))}
+                 </div>
+                <div className="relative flex-shrink-0">
+                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="Buscar..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10 pr-4 py-2 rounded-full border border-gray-300 focus:ring-2 focus:ring-brand-primary focus:outline-none w-32 sm:w-auto"
                     />
-                ))}
+                </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredLeads.map(lead => (
-                    <LeadCard key={lead.id} lead={lead} />
-                ))}
-            </div>
+
+            {viewMode === 'list' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredLeads.map(lead => (
+                        <LeadCard key={lead.id} lead={lead} />
+                    ))}
+                </div>
+            ) : (
+                <LeadsKanbanView leads={filteredLeads} />
+            )}
+
         </PageContainer>
     );
 };
 
 const NewLeadPage = () => {
     const navigate = useNavigate();
-    const { agents, currentUser } = useAuth();
+    const { agents } = useData();
+    const { currentUser } = useAuth();
+    const { addLead } = useData();
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
@@ -617,8 +932,7 @@ const NewLeadPage = () => {
                 priceRange: [0, 0],
             },
         };
-
-        mockLeads.unshift(newLead);
+        addLead(newLead);
         navigate('/leads');
     };
 
@@ -662,6 +976,7 @@ const NewLeadPage = () => {
 };
 
 const AISuggestions: React.FC<{ lead: Lead }> = ({ lead }) => {
+    const { properties } = useData();
     const [suggestedIds, setSuggestedIds] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -671,7 +986,7 @@ const AISuggestions: React.FC<{ lead: Lead }> = ({ lead }) => {
             setLoading(true);
             setError('');
             try {
-                const ids = await getPropertySuggestions(lead, mockProperties);
+                const ids = await getPropertySuggestions(lead, properties);
                 setSuggestedIds(ids);
             } catch (err) {
                 setError('Falha ao buscar sugestões da IA.');
@@ -682,16 +997,16 @@ const AISuggestions: React.FC<{ lead: Lead }> = ({ lead }) => {
         };
 
         fetchSuggestions();
-    }, [lead]);
+    }, [lead, properties]);
 
     const suggestedProperties = useMemo(() => {
-        return mockProperties.filter(p => suggestedIds.includes(p.id));
-    }, [suggestedIds]);
+        return properties.filter(p => suggestedIds.includes(p.id));
+    }, [suggestedIds, properties]);
 
     return (
         <div className="bg-white p-6 rounded-lg shadow-md h-full">
             <h3 className="text-lg font-bold text-brand-text mb-4 flex items-center gap-2">
-                <BotIcon className="h-6 w-6 text-brand-primary"/>
+                <SparklesIcon className="h-6 w-6 text-brand-primary"/>
                 Sugestões da IA para {lead.name}
             </h3>
             {loading && <div className="flex justify-center items-center h-48"><p>Analisando perfil...</p></div>}
@@ -717,13 +1032,62 @@ const AISuggestions: React.FC<{ lead: Lead }> = ({ lead }) => {
         </div>
     );
 };
+
+const AIWhatsappSuggester: React.FC<{ lead: Lead }> = ({ lead }) => {
+    const [suggestion, setSuggestion] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [copied, setCopied] = useState(false);
+
+    const handleGenerate = async () => {
+        setLoading(true);
+        setError('');
+        setSuggestion('');
+        try {
+            const message = await getWhatsappSuggestion(lead);
+            setSuggestion(message);
+        } catch (err) {
+            setError('Falha ao gerar mensagem.');
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(suggestion);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-md">
+            <h3 className="text-lg font-bold text-brand-text mb-4">Ações Rápidas com IA</h3>
+            <button onClick={handleGenerate} disabled={loading} className="w-full bg-brand-primary text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-opacity-90 transition-colors disabled:bg-gray-400">
+                <SparklesIcon className="h-5 w-5"/>
+                {loading ? 'Gerando mensagem...' : 'Gerar Follow-up para WhatsApp'}
+            </button>
+            {error && <p className="text-red-500 mt-2 text-sm">{error}</p>}
+            {suggestion && (
+                <div className="mt-4 p-4 bg-gray-50 rounded-md border">
+                    <p className="text-brand-text-light text-sm whitespace-pre-wrap">{suggestion}</p>
+                    <div className="flex justify-end mt-2">
+                        <button onClick={handleCopy} className="text-sm text-brand-primary font-semibold flex items-center gap-1">
+                           <CopyIcon className="h-4 w-4"/> {copied ? 'Copiado!' : 'Copiar'}
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 const LeadDetailPage = () => {
     const { id } = useParams<{ id: string }>();
-    const { agents } = useAuth();
-    const lead = mockLeads.find(l => l.id === id);
+    const { leads, agents, interactions } = useData();
+    const lead = leads.find(l => l.id === id);
     const agent = agents.find(a => a.id === lead?.agentId);
-    const leadInteractions = mockInteractions.slice(0, 2); // Mock: just show some interactions
-
+    
     if (!lead) {
         return <PageContainer title="Lead não encontrado" showBackButton>Lead não encontrado.</PageContainer>;
     }
@@ -733,7 +1097,7 @@ const LeadDetailPage = () => {
     return (
         <PageContainer title={lead.name} showBackButton>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Left Column: Lead Details & Interactions */}
+                {/* Left Column: Lead Details & AI Actions */}
                 <div className="lg:col-span-2 space-y-6">
                      {/* Details Card */}
                     <div className="bg-white p-6 rounded-lg shadow-md">
@@ -766,28 +1130,9 @@ const LeadDetailPage = () => {
                             </div>
                         </div>
                     </div>
-
-                     {/* Interactions Card */}
-                    <div className="bg-white p-6 rounded-lg shadow-md">
-                        <h3 className="text-lg font-bold text-brand-text mb-4">Últimas Interações</h3>
-                        <ul className="space-y-4">
-                            {leadInteractions.map(interaction => (
-                                <li key={interaction.id} className="flex gap-4">
-                                    <div className="flex-shrink-0 bg-gray-100 rounded-full h-10 w-10 flex items-center justify-center">
-                                        {interaction.type === 'WhatsApp' && <MessageCircleIcon className="h-5 w-5 text-green-500" />}
-                                        {interaction.type === 'Email' && <MailIcon className="h-5 w-5 text-red-500" />}
-                                        {interaction.type === 'Ligação' && <PhoneIcon className="h-5 w-5 text-blue-500" />}
-                                    </div>
-                                    <div>
-                                        <p className="font-semibold text-brand-text">{interaction.type} - <span className="font-normal text-brand-text-light">{format(new Date(interaction.date), 'dd/MM/yyyy', { locale: ptBR })}</span></p>
-                                        <p className="text-brand-text-light">{interaction.content}</p>
-                                    </div>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
+                    {/* AI Actions */}
+                    <AIWhatsappSuggester lead={lead} />
                 </div>
-
                 {/* Right Column: AI Suggestions */}
                 <div className="lg:col-span-1">
                     <AISuggestions lead={lead} />
@@ -796,41 +1141,53 @@ const LeadDetailPage = () => {
         </PageContainer>
     );
 };
+
 const PropertiesListPage = () => {
+    const navigate = useNavigate();
+    const { properties } = useData();
     const [searchTerm, setSearchTerm] = useState('');
     const [activeFilter, setActiveFilter] = useState<PropertyStatus | 'Todos'>('Todos');
 
     const filteredProperties = useMemo(() => {
-        return mockProperties
+        return properties
             .filter(p => activeFilter === 'Todos' || p.status === activeFilter)
             .filter(p => p.title.toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [searchTerm, activeFilter]);
+    }, [properties, searchTerm, activeFilter]);
 
     const filters: (PropertyStatus | 'Todos')[] = ['Todos', PropertyStatus.Disponivel, PropertyStatus.EmNegociacao, PropertyStatus.Vendido];
 
     return (
         <PageContainer title="Imóveis" actions={
-            <div className="relative">
-                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <input
-                    type="text"
-                    placeholder="Buscar imóvel..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 pr-4 py-2 rounded-full border border-gray-300 focus:ring-2 focus:ring-brand-primary focus:outline-none"
-                />
-            </div>
+            <button
+                onClick={() => navigate('/properties/new')}
+                className="bg-brand-primary text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-opacity-90 transition-colors"
+            >
+                <PlusIcon className="h-5 w-5" />
+                <span className="hidden sm:inline">Novo Imóvel</span>
+            </button>
         }>
-            <div className="flex items-center gap-2 mb-6">
-                <FilterIcon className="h-5 w-5 text-brand-text-light"/>
-                {filters.map(filter => (
-                    <FilterButton
-                        key={filter}
-                        label={filter}
-                        active={activeFilter === filter}
-                        onClick={() => setActiveFilter(filter)}
+            <div className="flex items-center justify-between gap-2 mb-6">
+                <div className="flex items-center gap-2 overflow-x-auto pb-2">
+                    <FilterIcon className="h-5 w-5 text-brand-text-light flex-shrink-0"/>
+                    {filters.map(filter => (
+                        <FilterButton
+                            key={filter}
+                            label={filter}
+                            active={activeFilter === filter}
+                            onClick={() => setActiveFilter(filter)}
+                        />
+                    ))}
+                </div>
+                 <div className="relative">
+                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="Buscar imóvel..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10 pr-4 py-2 rounded-full border border-gray-300 focus:ring-2 focus:ring-brand-primary focus:outline-none w-40 sm:w-auto"
                     />
-                ))}
+                </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredProperties.map(property => (
@@ -841,38 +1198,37 @@ const PropertiesListPage = () => {
     );
 };
 
+// ... (Other page components like WhatsappPage, DashboardPage etc will be added here)
 const WhatsappPage = () => {
+    const { leads, updateWhatsappHistory, agents: allAgents } = useData();
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-    const [message, setMessage] = useState('');
+    const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+    const [newMessage, setNewMessage] = useState('');
+    const chatContainerRef = useRef<HTMLDivElement>(null);
+
+
+    useEffect(() => {
+        if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
+    }, [selectedLeadId, leads]);
 
     const filteredLeads = useMemo(() => {
-        return mockLeads.filter(lead =>
-            lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            lead.phone.includes(searchTerm)
-        );
-    }, [searchTerm]);
+        return leads
+            .filter(lead => lead.name.toLowerCase().includes(searchTerm.toLowerCase()) || lead.phone.includes(searchTerm))
+            .sort((a, b) => {
+                const lastMessageA = a.whatsappHistory?.[a.whatsappHistory.length - 1];
+                const lastMessageB = b.whatsappHistory?.[b.whatsappHistory.length - 1];
+                if (!lastMessageA) return 1;
+                if (!lastMessageB) return -1;
+                return new Date(lastMessageB.timestamp).getTime() - new Date(lastMessageA.timestamp).getTime();
+            });
+    }, [searchTerm, leads]);
 
-    const templates = useMemo(() => [
-        { name: "Saudação", text: "Olá, {leadName}! Tudo bem? Vi que demonstrou interesse em nossos imóveis e gostaria de ajudar." },
-        { name: "Follow-up", text: "Olá, {leadName}. Passando para saber se conseguiu avaliar as opções de imóveis que enviei." },
-        { name: "Agendar Visita", text: "Olá, {leadName}. Qual seria o melhor dia e horário para agendarmos uma visita?" }
-    ], []);
-
-    const handleSelectLead = useCallback((lead: Lead) => {
-        setSelectedLead(lead);
-        setMessage(templates[0].text.replace('{leadName}', lead.name.split(' ')[0]));
-    }, [templates]);
-
-    const handleTemplateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        if (selectedLead) {
-            setMessage(e.target.value.replace('{leadName}', selectedLead.name.split(' ')[0]));
-        }
-    };
+    const selectedLead = useMemo(() => leads.find(l => l.id === selectedLeadId), [leads, selectedLeadId]);
 
     const openWhatsApp = (lead: Lead, text?: string) => {
         const phone = lead.phone.replace(/\D/g, '');
-        // Assuming Brazilian numbers, add 55 if not present
         const fullPhone = phone.length > 11 ? phone : `55${phone}`;
         let url = `https://wa.me/${fullPhone}`;
         if (text) {
@@ -881,82 +1237,216 @@ const WhatsappPage = () => {
         window.open(url, '_blank', 'noopener,noreferrer');
     };
 
-    const handleSend = () => {
-        if (selectedLead) {
-            openWhatsApp(selectedLead, message);
-        }
+    const handleSendMessage = () => {
+        if (!newMessage.trim() || !selectedLead) return;
+
+        const newMsg: WhatsappMessage = {
+            id: `msg-${Date.now()}`,
+            content: newMessage,
+            sender: 'agent',
+            status: 'sent',
+            timestamp: new Date().toISOString(),
+        };
+        
+        updateWhatsappHistory(selectedLead.id, newMsg);
+        openWhatsApp(selectedLead, newMessage);
+        setNewMessage('');
+    };
+    
+    const formatMessageTimestamp = (timestamp: string) => {
+        const date = new Date(timestamp);
+        if (isToday(date)) return format(date, 'HH:mm');
+        if (isYesterday(date)) return 'Ontem';
+        if (isThisYear(date)) return format(date, 'dd/MM');
+        return format(date, 'dd/MM/yy');
     };
 
+    const MessageStatusIndicator: React.FC<{ status: 'sent' | 'delivered' | 'read' }> = ({ status }) => {
+        if (status === 'read') return <DoubleCheckIcon className="text-blue-500" />;
+        if (status === 'delivered') return <DoubleCheckIcon className="text-gray-500" />;
+        return <CheckIcon className="text-gray-500" />;
+    };
+
+    const isMobile = window.innerWidth < 768;
+    const showChatList = !isMobile || (isMobile && !selectedLeadId);
+    const showChatWindow = !isMobile || (isMobile && selectedLeadId);
+
     return (
-        <PageContainer title="Integração WhatsApp" noPadding>
-            <div className="p-4 sm:p-6 lg:p-8">
-                <div className="flex flex-col md:flex-row gap-6 h-[calc(100vh-230px)] md:h-[calc(100vh-190px)]">
-                    {/* Left: Lead List */}
-                    <div className="w-full md:w-1/3 bg-white p-4 rounded-lg shadow-md flex flex-col">
-                        <div className="relative mb-4">
+        <PageContainer title="WhatsApp" noPadding>
+            <div className="flex h-[calc(100vh-140px)] md:h-[calc(100vh-100px)]">
+                {/* Left Panel: Conversation List */}
+                <div className={`w-full md:w-1/3 lg:w-1/4 border-r border-gray-200 flex flex-col bg-white ${showChatList ? 'flex' : 'hidden md:flex'}`}>
+                    <div className="p-4 border-b border-gray-200">
+                        <div className="relative">
                             <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                             <input
                                 type="text"
-                                placeholder="Buscar lead..."
+                                placeholder="Buscar conversa..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="pl-10 pr-4 py-2 w-full rounded-full border border-gray-300 focus:ring-2 focus:ring-brand-primary focus:outline-none"
+                                className="pl-10 pr-4 py-2 w-full rounded-full border bg-gray-100 border-gray-200 focus:ring-2 focus:ring-brand-primary focus:outline-none"
                             />
                         </div>
-                        <div className="flex-grow overflow-y-auto pr-2">
-                            <ul className="space-y-2">
-                                {filteredLeads.map(lead => (
-                                    <li
-                                        key={lead.id}
-                                        onClick={() => handleSelectLead(lead)}
-                                        className={`p-3 rounded-lg cursor-pointer flex justify-between items-center transition-colors ${selectedLead?.id === lead.id ? 'bg-brand-accent text-white' : 'hover:bg-gray-100'}`}
-                                    >
-                                        <div>
-                                            <p className="font-semibold">{lead.name}</p>
-                                            <p className={`text-sm ${selectedLead?.id === lead.id ? 'text-gray-200' : 'text-brand-text-light'}`}>{lead.phone}</p>
+                    </div>
+                    <div className="flex-grow overflow-y-auto">
+                        <ul className="divide-y divide-gray-200">
+                            {filteredLeads.map(lead => {
+                                const lastMessage = lead.whatsappHistory?.[lead.whatsappHistory.length - 1];
+                                const agent = allAgents.find(a => a.id === lead.agentId);
+                                return (
+                                <li key={lead.id} onClick={() => setSelectedLeadId(lead.id)} className={`p-3 flex items-center gap-3 cursor-pointer transition-colors ${selectedLeadId === lead.id ? 'bg-brand-secondary' : 'hover:bg-gray-50'}`}>
+                                    <img src={agent?.avatarUrl} alt={lead.name} className="h-12 w-12 rounded-full"/>
+                                    <div className="flex-grow overflow-hidden">
+                                        <div className="flex justify-between items-center">
+                                            <p className="font-semibold text-brand-text truncate">{lead.name}</p>
+                                            {lastMessage && <p className="text-xs text-brand-text-light flex-shrink-0 ml-2">{formatMessageTimestamp(lastMessage.timestamp)}</p>}
                                         </div>
-                                        <button onClick={(e) => { e.stopPropagation(); openWhatsApp(lead); }} className={`p-2 rounded-full ${selectedLead?.id === lead.id ? 'hover:bg-blue-500' : 'hover:bg-gray-200'}`}>
-                                            <WhatsappIcon className="h-6 w-6 text-green-500" />
+                                        <p className="text-sm text-brand-text-light truncate">{lastMessage?.content || 'Nenhuma mensagem ainda'}</p>
+                                    </div>
+                                </li>
+                            )})}
+                        </ul>
+                    </div>
+                </div>
+
+                {/* Right Panel: Chat Window */}
+                 <div className={`w-full md:w-2/3 lg:w-3/4 flex flex-col bg-gray-100 ${showChatWindow ? 'flex' : 'hidden md:flex'}`}>
+                    {selectedLead ? (
+                        <>
+                            {/* Chat Header */}
+                            <div className="flex items-center justify-between p-3 border-b border-gray-200 bg-white shadow-sm">
+                                <div className="flex items-center gap-3">
+                                    {isMobile && (
+                                        <button onClick={() => setSelectedLeadId(null)} className="p-2 rounded-full hover:bg-gray-100">
+                                            <ChevronLeftIcon className="h-6 w-6 text-brand-text" />
                                         </button>
-                                    </li>
+                                    )}
+                                    <img src={allAgents.find(a => a.id === selectedLead.agentId)?.avatarUrl} alt={selectedLead.name} className="h-10 w-10 rounded-full" />
+                                    <div>
+                                        <p className="font-bold text-brand-text">{selectedLead.name}</p>
+                                        <p className="text-xs text-green-500">Online</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => openWhatsApp(selectedLead)} className="p-2 rounded-full text-green-500 hover:bg-green-50 transition-colors">
+                                    <WhatsappIcon className="h-7 w-7"/>
+                                </button>
+                            </div>
+
+                            {/* Messages */}
+                            <div ref={chatContainerRef} className="flex-grow overflow-y-auto p-4 space-y-4 bg-repeat" style={{backgroundImage: 'url(https://i.pinimg.com/736x/8c/98/99/8c98994518b575bfd8c949e91d20548b.jpg)', backgroundSize: '20%'}}>
+                                {(selectedLead.whatsappHistory || []).map(msg => (
+                                    <div key={msg.id} className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'}`}>
+                                        <div className={`max-w-xs md:max-w-md lg:max-w-lg px-4 py-2 rounded-xl ${msg.sender === 'agent' ? 'bg-[#dcf8c6] text-brand-text' : 'bg-white text-brand-text shadow-sm'}`}>
+                                            <p className="text-sm break-words">{msg.content}</p>
+                                            <div className="flex items-center justify-end gap-1 mt-1">
+                                                <p className="text-xs text-gray-400">{format(new Date(msg.timestamp), 'HH:mm')}</p>
+                                                {msg.sender === 'agent' && <MessageStatusIndicator status={msg.status} />}
+                                            </div>
+                                        </div>
+                                    </div>
                                 ))}
-                            </ul>
+                            </div>
+
+                            {/* Message Composer */}
+                            <div className="bg-white p-3 border-t border-gray-200 flex items-center gap-2">
+                                <input
+                                    type="text"
+                                    placeholder="Digite uma mensagem"
+                                    value={newMessage}
+                                    onChange={(e) => setNewMessage(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                                    className="flex-grow px-4 py-2 bg-gray-100 rounded-full border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                                />
+                                <button onClick={handleSendMessage} className="bg-brand-primary text-white rounded-full p-3 hover:bg-opacity-90 transition-colors disabled:bg-gray-300" disabled={!newMessage.trim()}>
+                                    <SendIcon className="h-5 w-5" />
+                                </button>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="flex flex-col justify-center items-center h-full text-center text-brand-text-light">
+                            <MessageCircleIcon className="h-24 w-24 mb-4 text-gray-300" />
+                            <h3 className="text-2xl font-semibold">Selecione uma conversa</h3>
+                            <p>Escolha um lead na lista ao lado para começar a conversar.</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </PageContainer>
+    );
+};
+
+// --- PROPERTY CRUD PAGES ---
+const PropertyDetailPage = () => {
+    const { id } = useParams<{ id: string }>();
+    const navigate = useNavigate();
+    const { properties, agents } = useData();
+    const [mainImage, setMainImage] = useState('');
+
+    const property = useMemo(() => properties.find(p => p.id === id), [id, properties]);
+    const agent = useMemo(() => agents.find(a => a.id === property?.agentId), [property, agents]);
+
+    useEffect(() => {
+        if (property) {
+            setMainImage(property.images[0]);
+        }
+    }, [property]);
+
+    if (!property) {
+        return <PageContainer title="Imóvel não encontrado" showBackButton>O imóvel que você procura não existe ou foi removido.</PageContainer>;
+    }
+    
+    const formatPrice = (price: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
+
+    return (
+        <PageContainer title={property.title} showBackButton actions={
+             <button onClick={() => navigate(`/properties/${id}/edit`)} className="bg-brand-primary text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-opacity-90 transition-colors">
+                <PlusIcon className="h-5 w-5"/> Editar
+             </button>
+        }>
+            <div className="bg-white rounded-lg shadow-md overflow-hidden">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-0">
+                    <div className="md:col-span-3">
+                        <img src={mainImage} alt={property.title} className="w-full h-96 object-cover" />
+                         <div className="flex gap-2 p-2 bg-gray-100 overflow-x-auto">
+                            {property.images.map((img, idx) => (
+                                <img 
+                                    key={idx} 
+                                    src={img} 
+                                    onClick={() => setMainImage(img)}
+                                    className={`h-20 w-20 object-cover rounded-md cursor-pointer border-2 ${mainImage === img ? 'border-brand-primary' : 'border-transparent'}`} 
+                                    alt={`Thumbnail ${idx+1}`}
+                                />
+                            ))}
                         </div>
                     </div>
+                    <div className="md:col-span-2 p-6 flex flex-col">
+                        <StatusPill status={property.status} />
+                        <h1 className="text-2xl font-bold text-brand-text mt-2">{property.title}</h1>
+                        <p className="text-brand-text-light mt-1 flex items-center gap-2"><MapPinIcon className="h-5 w-5"/>{property.location.bairro}, {property.location.cidade}</p>
+                        <p className="text-4xl font-extrabold text-brand-primary my-4">{formatPrice(property.price)}</p>
+                        
+                        <div className="grid grid-cols-2 gap-4 text-sm my-4">
+                            <div className="flex items-center gap-2"><BuildingIcon className="h-5 w-5 text-brand-text-light"/>Área: {property.area} m²</div>
+                            <div className="flex items-center gap-2"><UsersIcon className="h-5 w-5 text-brand-text-light"/>Quartos: {property.bedrooms}</div>
+                            <div className="flex items-center gap-2"><UsersIcon className="h-5 w-5 text-brand-text-light"/>Banheiros: {property.bathrooms}</div>
+                            <div className="flex items-center gap-2"><UsersIcon className="h-5 w-5 text-brand-text-light"/>Vagas: {property.garageSpaces}</div>
+                        </div>
+                        
+                        <div className="text-brand-text-light text-sm my-4 border-t pt-4">
+                            <h3 className="font-semibold text-brand-text mb-2">Descrição</h3>
+                            <p className="whitespace-pre-wrap">{property.description}</p>
+                        </div>
 
-                    {/* Right: Message Composer */}
-                    <div className="w-full md:w-2/3 bg-white p-6 rounded-lg shadow-md flex flex-col">
-                        {selectedLead ? (
-                            <>
-                                <h3 className="text-xl font-bold text-brand-text mb-4 border-b pb-3">Conversar com {selectedLead.name}</h3>
-                                <div className="mb-4">
-                                    <label htmlFor="template" className="block text-sm font-medium text-brand-text-light mb-1">Usar modelo de mensagem</label>
-                                    <select id="template" onChange={handleTemplateChange} className="w-full p-2 border border-gray-300 rounded-md focus:ring-brand-primary focus:border-brand-primary">
-                                        {templates.map(t => <option key={t.name} value={t.text}>{t.name}</option>)}
-                                    </select>
+                        {agent && (
+                             <div className="border-t pt-4 mt-auto">
+                                <h3 className="font-semibold text-brand-text mb-2">Corretor Responsável</h3>
+                                <div className="flex items-center gap-3">
+                                    <img src={agent.avatarUrl} alt={agent.name} className="h-12 w-12 rounded-full"/>
+                                    <div>
+                                        <p className="font-bold text-brand-text">{agent.name}</p>
+                                        <p className="text-sm text-brand-text-light">{agent.email}</p>
+                                    </div>
                                 </div>
-                                <div className="mb-4 flex-grow flex flex-col">
-                                    <label htmlFor="message" className="block text-sm font-medium text-brand-text-light mb-1">Mensagem</label>
-                                    <textarea
-                                        id="message"
-                                        value={message}
-                                        onChange={(e) => setMessage(e.target.value)}
-                                        className="w-full p-2 border border-gray-300 rounded-md flex-grow focus:ring-brand-primary focus:border-brand-primary"
-                                        rows={10}
-                                    />
-                                </div>
-                                <div className="flex justify-end">
-                                    <button onClick={handleSend} className="bg-green-500 text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors">
-                                        <WhatsappIcon className="h-5 w-5" />
-                                        Enviar no WhatsApp
-                                    </button>
-                                </div>
-                            </>
-                        ) : (
-                            <div className="flex flex-col justify-center items-center h-full text-center text-brand-text-light">
-                                <MessageCircleIcon className="h-16 w-16 mb-4 text-gray-300" />
-                                <h3 className="text-xl font-semibold">Selecione um lead</h3>
-                                <p>Escolha um lead na lista ao lado para começar a compor sua mensagem.</p>
                             </div>
                         )}
                     </div>
@@ -966,8 +1456,164 @@ const WhatsappPage = () => {
     );
 };
 
+const PropertyFormPage = () => {
+    const { id } = useParams<{ id?: string }>();
+    const navigate = useNavigate();
+    const { properties, addProperty, updateProperty, agents } = useData();
+    const { currentUser } = useAuth();
+    
+    const [property, setProperty] = useState<Omit<Property, 'id'>>({
+        title: '', type: PropertyType.Apartamento, description: '', location: { bairro: '', cidade: 'São Paulo' },
+        price: 0, area: 0, bedrooms: 0, bathrooms: 0, garageSpaces: 0,
+        agentId: currentUser?.id || '', images: [''], status: PropertyStatus.Disponivel,
+    });
+    const [isGenerating, setIsGenerating] = useState(false);
 
-// DASHBOARD COMPONENTS
+    const isEditing = Boolean(id);
+
+    useEffect(() => {
+        if (isEditing) {
+            const existingProperty = properties.find(p => p.id === id);
+            if (existingProperty) {
+                setProperty(existingProperty);
+            }
+        }
+    }, [id, properties, isEditing]);
+    
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        if (name === 'bairro' || name === 'cidade') {
+            setProperty(prev => ({ ...prev, location: { ...prev.location, [name]: value } }));
+        } else {
+            setProperty(prev => ({ ...prev, [name]: value }));
+        }
+    };
+    
+    const handleImageChange = (index: number, value: string) => {
+        const newImages = [...property.images];
+        newImages[index] = value;
+        setProperty(prev => ({ ...prev, images: newImages }));
+    };
+
+    const addImageField = () => {
+        setProperty(prev => ({ ...prev, images: [...prev.images, ''] }));
+    };
+
+    const removeImageField = (index: number) => {
+        setProperty(prev => ({ ...prev, images: prev.images.filter((_, i) => i !== index) }));
+    };
+
+    const handleGenerateDescription = async () => {
+        setIsGenerating(true);
+        const { images, agentId, status, ...details } = property;
+        const description = await getPropertyDescription(details);
+        setProperty(prev => ({ ...prev, description }));
+        setIsGenerating(false);
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (isEditing) {
+            updateProperty({ ...property, id: id! });
+        } else {
+            addProperty({ ...property, id: `prop-${Date.now()}` });
+        }
+        navigate('/properties');
+    };
+
+    return (
+        <PageContainer title={isEditing ? 'Editar Imóvel' : 'Novo Imóvel'} showBackButton>
+            <form onSubmit={handleSubmit} className="max-w-4xl mx-auto bg-white p-8 rounded-lg shadow-md space-y-6">
+                 <div>
+                    <label htmlFor="title" className="block text-sm font-medium text-brand-text-light">Título do Anúncio</label>
+                    <input type="text" name="title" value={property.title} onChange={handleChange} required className="input-style" />
+                </div>
+                
+                <div className="relative">
+                    <label htmlFor="description" className="block text-sm font-medium text-brand-text-light">Descrição</label>
+                    <textarea name="description" value={property.description} onChange={handleChange} rows={6} className="input-style"></textarea>
+                    <button type="button" onClick={handleGenerateDescription} disabled={isGenerating} className="absolute bottom-3 right-3 bg-brand-primary text-white text-xs font-semibold px-2 py-1 rounded-md flex items-center gap-1 hover:bg-opacity-80 disabled:bg-gray-400">
+                        <SparklesIcon className="h-4 w-4"/>
+                        {isGenerating ? 'Gerando...' : 'Gerar com IA'}
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                     <div>
+                        <label htmlFor="price" className="block text-sm font-medium text-brand-text-light">Preço (R$)</label>
+                        <input type="number" name="price" value={property.price} onChange={handleChange} required className="input-style" />
+                    </div>
+                     <div>
+                        <label htmlFor="type" className="block text-sm font-medium text-brand-text-light">Tipo</label>
+                        <select name="type" value={property.type} onChange={handleChange} className="input-style">
+                            {Object.values(PropertyType).map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="status" className="block text-sm font-medium text-brand-text-light">Status</label>
+                        <select name="status" value={property.status} onChange={handleChange} className="input-style">
+                            {Object.values(PropertyStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="bairro" className="block text-sm font-medium text-brand-text-light">Bairro</label>
+                        <input type="text" name="bairro" value={property.location.bairro} onChange={handleChange} required className="input-style" />
+                    </div>
+                    <div>
+                        <label htmlFor="cidade" className="block text-sm font-medium text-brand-text-light">Cidade</label>
+                        <input type="text" name="cidade" value={property.location.cidade} onChange={handleChange} required className="input-style" />
+                    </div>
+                     <div>
+                        <label htmlFor="area" className="block text-sm font-medium text-brand-text-light">Área (m²)</label>
+                        <input type="number" name="area" value={property.area} onChange={handleChange} required className="input-style" />
+                    </div>
+                     <div>
+                        <label htmlFor="bedrooms" className="block text-sm font-medium text-brand-text-light">Quartos</label>
+                        <input type="number" name="bedrooms" value={property.bedrooms} onChange={handleChange} required className="input-style" />
+                    </div>
+                     <div>
+                        <label htmlFor="bathrooms" className="block text-sm font-medium text-brand-text-light">Banheiros</label>
+                        <input type="number" name="bathrooms" value={property.bathrooms} onChange={handleChange} required className="input-style" />
+                    </div>
+                     <div>
+                        <label htmlFor="garageSpaces" className="block text-sm font-medium text-brand-text-light">Vagas</label>
+                        <input type="number" name="garageSpaces" value={property.garageSpaces} onChange={handleChange} required className="input-style" />
+                    </div>
+                </div>
+                
+                <div>
+                     <label className="block text-sm font-medium text-brand-text-light mb-2">Imagens (URLs)</label>
+                     <div className="space-y-2">
+                        {property.images.map((url, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                                <input type="text" value={url} onChange={e => handleImageChange(index, e.target.value)} placeholder="https://example.com/image.jpg" required className="input-style flex-grow"/>
+                                <button type="button" onClick={() => removeImageField(index)} className="p-2 text-red-500 hover:bg-red-100 rounded-full">
+                                    <XIcon className="h-5 w-5"/>
+                                </button>
+                            </div>
+                        ))}
+                     </div>
+                     <button type="button" onClick={addImageField} className="mt-2 text-sm font-semibold text-brand-primary hover:underline">Adicionar outra imagem</button>
+                </div>
+
+                <div>
+                    <label htmlFor="agentId" className="block text-sm font-medium text-brand-text-light">Corretor Responsável</label>
+                    <select name="agentId" value={property.agentId} onChange={handleChange} className="input-style">
+                        {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                </div>
+                
+                <div className="flex justify-end gap-4 pt-4 border-t">
+                    <button type="button" onClick={() => navigate(-1)} className="px-6 py-2 text-sm font-medium text-brand-text bg-gray-200 rounded-lg hover:bg-gray-300">Cancelar</button>
+                    <button type="submit" className="bg-brand-primary text-white px-6 py-2 text-sm font-medium rounded-lg">{isEditing ? 'Salvar Alterações' : 'Criar Imóvel'}</button>
+                </div>
+            </form>
+             <style>{`.input-style { display: block; width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #D1D5DB; border-radius: 0.375rem; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); outline-offset: 2px; } .input-style:focus { outline: 2px solid transparent; --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color); --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color); box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000); --tw-ring-color: #0052CC; }`}</style>
+        </PageContainer>
+    );
+};
+
+// --- DASHBOARD COMPONENTS ---
 const KpiCard: React.FC<{ title: string; value: string; icon: React.FC<React.SVGProps<SVGSVGElement>>; description: string }> = ({ title, value, icon: Icon, description }) => (
     <div className="bg-white p-6 rounded-lg shadow-md flex items-center space-x-4">
         <div className="bg-brand-accent/20 p-3 rounded-full">
@@ -987,6 +1633,7 @@ const ChartContainer: React.FC<{ title: string; children: React.ReactNode }> = (
     </div>
 );
 const ConversionFunnelChart: React.FC<{ data: { stage: string; value: number }[] }> = ({ data }) => {
+    const navigate = useNavigate();
     if (!data.length) return null;
     const maxValue = data[0].value;
     const colors = ['#0052CC', '#4C9AFF', '#B3D4FF', '#EBF5FF'];
@@ -999,10 +1646,10 @@ const ConversionFunnelChart: React.FC<{ data: { stage: string; value: number }[]
                 const dropOff = prevValue > 0 ? ((prevValue - item.value) / prevValue * 100).toFixed(1) : 0;
 
                 return (
-                    <div key={item.stage} className="flex flex-col items-center">
+                    <div key={item.stage} className="flex flex-col items-center cursor-pointer group" onClick={() => navigate(`/leads?status=${item.stage}`)}>
                         <div className="text-sm font-semibold text-brand-text">{item.stage} ({item.value})</div>
                         <div className="relative" style={{ width: `${20 + (item.value / maxValue * 80)}%`, minWidth: '80px'}}>
-                            <div style={{ backgroundColor: colors[index % colors.length] }} className="h-10 rounded-sm flex items-center justify-center text-white font-bold text-sm">
+                            <div style={{ backgroundColor: colors[index % colors.length] }} className="h-10 rounded-sm flex items-center justify-center text-white font-bold text-sm transition-transform group-hover:scale-105">
                                 {percentage}%
                             </div>
                         </div>
@@ -1039,6 +1686,7 @@ const VisitsTrendChart: React.FC<{ data: { day: string; visits: number }[] }> = 
     );
 };
 const PropertyTypePieChart: React.FC<{ data: { type: string; value: number }[] }> = ({ data }) => {
+    const navigate = useNavigate();
     const colors = ['#0052CC', '#4C9AFF', '#00B8D9', '#B3D4FF'];
     const total = data.reduce((sum, item) => sum + item.value, 0);
     
@@ -1083,16 +1731,17 @@ const PropertyTypePieChart: React.FC<{ data: { type: string; value: number }[] }
 };
 const DashboardPage = () => {
     const { currentUser } = useAuth();
+    const { leads, properties, visits } = useData();
     const dashboardData = useMemo(() => {
-        const totalLeads = mockLeads.length;
-        const availableProperties = mockProperties.filter(p => p.status === PropertyStatus.Disponivel).length;
-        const totalVisits = mockVisits.length;
+        const totalLeads = leads.length;
+        const availableProperties = properties.filter(p => p.status === PropertyStatus.Disponivel).length;
+        const totalVisits = visits.length;
         
-        const closedLeadsCount = mockLeads.filter(l => l.status === LeadStatus.Fechado).length;
-        const activeLeadsCount = mockLeads.filter(l => l.status !== LeadStatus.Novo && l.status !== LeadStatus.Perdido).length;
+        const closedLeadsCount = leads.filter(l => l.status === LeadStatus.Fechado).length;
+        const activeLeadsCount = leads.filter(l => l.status !== LeadStatus.Novo && l.status !== LeadStatus.Perdido).length;
         const conversionRate = activeLeadsCount > 0 ? (closedLeadsCount / activeLeadsCount) * 100 : 0;
 
-        const leadsByStatus = mockLeads.reduce((acc, lead) => {
+        const leadsByStatus = leads.reduce((acc, lead) => {
             acc[lead.status] = (acc[lead.status] || 0) + 1;
             return acc;
         }, {} as { [key in LeadStatus]: number });
@@ -1109,17 +1758,17 @@ const DashboardPage = () => {
         const weekDays = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
         const visitsTrendData = weekDays.map((day, index) => {
             const date = addDays(startOfTodayWeek, index);
-            const visits = mockVisits.filter(v => getDay(v.start) === getDay(date)).length;
-            return { day, visits };
+            const dailyVisits = visits.filter(v => getDay(v.start) === getDay(date)).length;
+            return { day, visits: dailyVisits };
         });
 
         const propertiesByType = Object.values(PropertyType).map(type => ({
             type,
-            value: mockProperties.filter(p => p.type === type).length,
+            value: properties.filter(p => p.type === type).length,
         })).filter(item => item.value > 0);
 
         return { totalLeads, availableProperties, conversionRate, totalVisits, conversionFunnelData, visitsTrendData, propertiesByType };
-    }, []);
+    }, [leads, properties, visits]);
 
     return (
         <PageContainer title={`Olá, ${currentUser?.name.split(' ')[0]}!`}>
@@ -1160,46 +1809,37 @@ const _startOfWeek = (date: Date, options?: { weekStartsOn?: number; locale?: ob
 interface NewVisitModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (visit: Visit) => void;
-    agents: Agent[];
-    leads: Lead[];
-    properties: Property[];
+    onSave: (visit: Omit<Visit, 'id'>) => void;
     currentUser: Agent;
 }
-const NewVisitModal: React.FC<NewVisitModalProps> = ({ isOpen, onClose, onSave, agents, leads, properties, currentUser }) => {
+const NewVisitModal: React.FC<NewVisitModalProps> = ({ isOpen, onClose, onSave, currentUser }) => {
+    const { agents, leads, properties } = useData();
     const [title, setTitle] = useState('');
     const [leadId, setLeadId] = useState('');
     const [propertyId, setPropertyId] = useState('');
     const [agentId, setAgentId] = useState(currentUser.id);
     const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [startTime, setStartTime] = useState(format(new Date(), 'HH:mm'));
-    const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-    const [endTime, setEndTime] = useState(format(addDays(new Date(), 1), 'HH:mm'));
+    
+    useEffect(() => {
+        if(leadId) {
+            const lead = leads.find(l => l.id === leadId);
+            if(lead) setTitle(`Visita com ${lead.name}`);
+        }
+    }, [leadId, leads]);
 
     if (!isOpen) return null;
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const start = new Date(`${startDate}T${startTime}`);
-        const end = new Date(`${endDate}T${endTime}`);
-        if (!title || !leadId || !propertyId || !agentId || isNaN(start.getTime()) || isNaN(end.getTime())) {
+        const start = parseISO(`${startDate}T${startTime}`);
+        const end = new Date(start.getTime() + 60 * 60 * 1000); // Add 1 hour
+        if (!title || !leadId || !propertyId || !agentId || isNaN(start.getTime())) {
             alert("Por favor, preencha todos os campos corretamente.");
             return;
         }
-        if (end <= start) {
-            alert("A data/hora final deve ser posterior à data/hora inicial.");
-            return;
-        }
-
-        onSave({
-            id: `visit-${Date.now()}`,
-            title,
-            start,
-            end,
-            agentId,
-            leadId,
-            propertyId,
-        });
+        
+        onSave({ title, start, end, agentId, leadId, propertyId });
         onClose();
     };
 
@@ -1233,22 +1873,12 @@ const NewVisitModal: React.FC<NewVisitModalProps> = ({ isOpen, onClose, onSave, 
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label htmlFor="startDate" className="block text-sm font-medium text-brand-text-light">Data de Início</label>
+                            <label htmlFor="startDate" className="block text-sm font-medium text-brand-text-light">Data da Visita</label>
                             <input type="date" id="startDate" value={startDate} onChange={e => setStartDate(e.target.value)} required className="mt-1 block w-full input-style" />
                         </div>
                          <div>
-                            <label htmlFor="startTime" className="block text-sm font-medium text-brand-text-light">Hora de Início</label>
+                            <label htmlFor="startTime" className="block text-sm font-medium text-brand-text-light">Hora da Visita</label>
                             <input type="time" id="startTime" value={startTime} onChange={e => setStartTime(e.target.value)} required className="mt-1 block w-full input-style" />
-                        </div>
-                    </div>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label htmlFor="endDate" className="block text-sm font-medium text-brand-text-light">Data de Fim</label>
-                            <input type="date" id="endDate" value={endDate} onChange={e => setEndDate(e.target.value)} required className="mt-1 block w-full input-style" />
-                        </div>
-                         <div>
-                            <label htmlFor="endTime" className="block text-sm font-medium text-brand-text-light">Hora de Fim</label>
-                            <input type="time" id="endTime" value={endTime} onChange={e => setEndTime(e.target.value)} required className="mt-1 block w-full input-style" />
                         </div>
                     </div>
                      <div>
@@ -1273,8 +1903,8 @@ const NewVisitModal: React.FC<NewVisitModalProps> = ({ isOpen, onClose, onSave, 
 };
 
 const AgendaPage = () => {
-    const { agents, currentUser } = useAuth();
-    const [visits, setVisits] = useState<Visit[]>(mockVisits);
+    const { currentUser } = useAuth();
+    const { agents, visits, addVisit, leads, properties } = useData();
     const [selectedEvent, setSelectedEvent] = useState<Visit | undefined>(undefined);
     const [isNewEventModalOpen, setIsNewEventModalOpen] = useState(false);
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -1300,8 +1930,8 @@ const AgendaPage = () => {
 
     const handleCloseModal = () => setSelectedEvent(undefined);
     
-    const handleSaveNewVisit = (newVisit: Visit) => {
-        setVisits(prev => [...prev, newVisit]);
+    const handleSaveNewVisit = (newVisit: Omit<Visit, 'id'>) => {
+        addVisit(newVisit);
         setIsNewEventModalOpen(false);
     };
 
@@ -1384,8 +2014,8 @@ const AgendaPage = () => {
                         </div>
                         <div className="space-y-4 text-brand-text-light">
                             <div className="flex items-center gap-3"><ClockIcon className="h-5 w-5"/><span>{format(selectedEvent.start, 'dd/MM/yyyy HH:mm', { locale: ptBR })} - {format(selectedEvent.end, 'HH:mm', { locale: ptBR })}</span></div>
-                            <div className="flex items-center gap-3"><UsersIcon className="h-5 w-5"/><span>Lead: {mockLeads.find(l => l.id === selectedEvent.leadId)?.name}</span></div>
-                            <div className="flex items-center gap-3"><BuildingIcon className="h-5 w-5"/><span>Imóvel: {mockProperties.find(p => p.id === selectedEvent.propertyId)?.title}</span></div>
+                            <div className="flex items-center gap-3"><UsersIcon className="h-5 w-5"/><span>Lead: {leads.find(l => l.id === selectedEvent.leadId)?.name}</span></div>
+                            <div className="flex items-center gap-3"><BuildingIcon className="h-5 w-5"/><span>Imóvel: {properties.find(p => p.id === selectedEvent.propertyId)?.title}</span></div>
                             <div className="flex items-center gap-3"><StarIcon className="h-5 w-5"/><span>Corretor: {agents.find(a => a.id === selectedEvent.agentId)?.name}</span></div>
                         </div>
                     </div>
@@ -1396,16 +2026,13 @@ const AgendaPage = () => {
                 isOpen={isNewEventModalOpen}
                 onClose={() => setIsNewEventModalOpen(false)}
                 onSave={handleSaveNewVisit}
-                agents={agents}
-                leads={mockLeads}
-                properties={mockProperties}
                 currentUser={currentUser}
             />}
         </PageContainer>
     );
 };
 
-// LAYOUT FOR AUTHENTICATED APP
+// --- LAYOUT FOR AUTHENTICATED APP ---
 const MainLayout = () => {
     const { currentUser, loading } = useAuth();
     const location = useLocation();
@@ -1427,6 +2054,9 @@ const MainLayout = () => {
                 <Route path="/leads/new" element={<NewLeadPage />} />
                 <Route path="/leads/:id" element={<LeadDetailPage />} />
                 <Route path="/properties" element={<PropertiesListPage />} />
+                <Route path="/properties/new" element={<PropertyFormPage />} />
+                <Route path="/properties/:id" element={<PropertyDetailPage />} />
+                <Route path="/properties/:id/edit" element={<PropertyFormPage />} />
                 <Route path="/agenda" element={<AgendaPage />} />
                 <Route path="/whatsapp" element={<WhatsappPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
